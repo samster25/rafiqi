@@ -127,6 +127,7 @@ benchmark_gpu_gemv_file(int m, int n, char *filename, float *x, float *y, struct
     gettimeofday(&dat->memcopy, NULL); 
     
     cublasSgemv(handle,CUBLAS_OP_N,m,n,&al, cuda_A,m,cuda_x,1,&bet, cuda_y,1);
+    cudaDeviceSynchronize(); 
     gettimeofday(&dat->compute, NULL); 
     
     cudaMemcpy(y, cuda_y, m*sizeof(float), cudaMemcpyDeviceToHost);

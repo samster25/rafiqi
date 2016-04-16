@@ -6,6 +6,7 @@ start := 128
 end := 16384 
 step := 2048
 
+
 generate:
 	python gen_matrix.py $(data) $(manifesto) $(start) $(end) $(step)
 build:

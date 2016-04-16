@@ -1,6 +1,6 @@
 *.swp
 *.swo
 matrix_benchmarker/bin
-matrix_benchmarker/data.csv
+matrix_benchmarker/data
 matrix_benchmarker/matrix_models
 

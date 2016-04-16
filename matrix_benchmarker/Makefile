@@ -1,9 +1,9 @@
-data := /scratch/sammy/matrix_models
-manifesto := /scratch/sammy/matrix_models/manifesto.txt
+data := /work/matrix_models
+manifesto := /work/matrix_models/manifesto.txt
 stats := ./data.csv
 
 start := 9
-end := 14
+end := 15
 step := 1
 
 generate:

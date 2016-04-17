@@ -29,18 +29,12 @@ bool GPU_Cache::put_and_malloc(int m, int n, void **cpu_ptr, void **gpu_ptr) {
         printf("error cuda mallocing\n");
         exit(1);
     }
-    cudaMemcpy(gpu_ptr, A, m*n*sizeof(float), cudaMemcpyHostToDevice);
-    *cpu_ptr = (float *) malloc(m*n*sizeof(float));
-    FILE *f = fopen(filename, "r");
-    if (fread((void *) A, m*n*sizeof(float), 1,f) == 0) {
-        return false;
-    }
-    fclose(f);
+    cudaMemcpy(gpu_ptr, cpu_ptr, m*n*sizeof(float), cudaMemcpyHostToDevice);
     return put(m, n, cpu_ptr, gpu_ptr);
 }
 
 bool GPU_Cache::put(int m, int n, void **cpu_ptr, void **gpu_ptr) {
-    cache_block *curr = (*cache_block)malloc(sizeof(cache_block));
+    cache_block *curr = malloc(sizeof(cache_block));
     curr->gpu_ptr = *gpu_ptr;
     curr->cpu_ptr = *cpu_ptr;
     curr->m = m;

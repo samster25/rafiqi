@@ -34,7 +34,7 @@ bool GPU_Cache::put_and_malloc(int m, int n, void **cpu_ptr, void **gpu_ptr) {
 }
 
 bool GPU_Cache::put(int m, int n, void **cpu_ptr, void **gpu_ptr) {
-    cache_block *curr = malloc(sizeof(cache_block));
+    cache_block *curr = (* cache_block)malloc(sizeof(cache_block));
     curr->gpu_ptr = *gpu_ptr;
     curr->cpu_ptr = *cpu_ptr;
     curr->m = m;

@@ -8,7 +8,7 @@
 #include <omp.h>
 #include <math.h>
 #include <string.h>
-#include <gpu_cache.h>
+#include "gpu_cache.h"
 
 #define DEV_NUM 0
 

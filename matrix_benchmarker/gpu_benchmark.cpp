@@ -8,6 +8,7 @@
 #include <omp.h>
 #include <math.h>
 #include <string.h>
+#include <gpu_cache.h>
 
 #define DEV_NUM 0
 
@@ -89,6 +90,63 @@ error_sum(float *a, float *b, int n) {
         error += ((b[i] - a[i])*(b[i] - a[i]));
     }
     return error;
+}
+
+void
+benchmark_gpu_gemv_cache_file(int m, int n, char *filename, float *x, float *y, struct bench_time *dat) {
+    dat->m = m;
+    dat->n = n;
+    cublasHandle_t handle;
+    float al = 1.0f;
+    float bet = 0.0f;
+    float *A, *cuda_A, *cuda_x, *cuda_y;
+    gettimeofday(&dat->start, NULL); 
+    GPU_Cache cache = new GPU_Cache(1000);
+    A = (float *) malloc(m*n*sizeof(float));
+    gettimeofday(&dat->alloc, NULL); 
+    
+    FILE *f = fopen(filename, "r");
+    if (fread((void *) A, m*n*sizeof(float), 1,f) == 0)
+        return;
+    fclose(f);
+    gettimeofday(&dat->disk_IO, NULL); 
+    
+    // if ((cudaMalloc((void **) &cuda_A, m*n*sizeof(float)) != cudaSuccess) ||
+    //     (cudaMalloc((void **) &cuda_x, n*sizeof(float)) != cudaSuccess) ||
+    //     (cudaMalloc((void **) &cuda_y, m*sizeof(float)) != cudaSuccess)) {
+    //     printf("error cuda mallocing\n");
+    //     exit(1);
+    // }
+    cublasCreate(&handle); 
+    gettimeofday(&dat->cuda_alloc, NULL); 
+    
+    if (cudaMemcpy(cuda_x, x, n*sizeof(float), cudaMemcpyHostToDevice) != cudaSuccess) {
+        printf("cudaMemcpy error\n");
+        exit(1);
+    }
+    // cudaMemcpy(cuda_A, A, m*n*sizeof(float), cudaMemcpyHostToDevice);
+    if (!cache.get(m, n, &A, &cuda_A)) {
+        cache.put_and_malloc(m, n, &A, &cuda_A));
+    }
+
+    gettimeofday(&dat->memcopy, NULL); 
+    
+    cublasSgemv(handle,CUBLAS_OP_N,m,n,&al, cuda_A,m,cuda_x,1,&bet, cuda_y,1);
+    cudaDeviceSynchronize(); 
+    gettimeofday(&dat->compute, NULL); 
+    
+    cudaMemcpy(y, cuda_y, m*sizeof(float), cudaMemcpyDeviceToHost);
+    gettimeofday(&dat->memcopy_back, NULL); 
+    
+    cudaFree(cuda_A);
+    cudaFree(cuda_x);
+    cudaFree(cuda_y);
+    cublasDestroy(handle);
+    gettimeofday(&dat->total, NULL); 
+    //float *cpu_y = (float *) malloc(sizeof(float) * m);
+    //cpu_gemv_naive(m,n,A,x,cpu_y);
+    //dat->rss = error_sum(y, cpu_y, m*n);
+    //free(cpu_y);
 }
 
 void

@@ -11,7 +11,7 @@ generate:
 	python gen_matrix.py $(data) $(manifesto) $(start) $(end) $(step)
 build:
 	mkdir -p bin
-	nvcc -lcublas -O3 gpu_benchmark.cpp -o bin/gpu_benchmark
+	nvcc -lcublas -O3 gpu_benchmark.cpp gpu_cache.cpp -o bin/gpu_benchmark
 benchmark:
 	mkdir -p data
 	./bin/gpu_benchmark $(data) $(manifesto) $(stats)

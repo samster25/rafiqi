@@ -111,17 +111,16 @@ benchmark_gpu_gemv_cache_file(int m, int n, char *filename, float *x, float *y, 
     fclose(f);
     gettimeofday(&dat->disk_IO, NULL); 
     
-    // if ((cudaMalloc((void **) &cuda_A, m*n*sizeof(float)) != cudaSuccess) ||
-    //     (cudaMalloc((void **) &cuda_x, n*sizeof(float)) != cudaSuccess) ||
-    //     (cudaMalloc((void **) &cuda_y, m*sizeof(float)) != cudaSuccess)) {
-    //     printf("error cuda mallocing\n");
-    //     exit(1);
-    // }
+     if (//(cudaMalloc((void **) &cuda_A, m*n*sizeof(float)) != cudaSuccess) ||
+         (cudaMalloc((void **) &cuda_x, n*sizeof(float)) != cudaSuccess) ||
+         (cudaMalloc((void **) &cuda_y, m*sizeof(float)) != cudaSuccess)) {
+         printf("error cuda mallocing\n");
+         exit(1);
+     }
     cublasCreate(&handle); 
     gettimeofday(&dat->cuda_alloc, NULL); 
-    
-    if (cudaMemcpy(cuda_x, x, n*sizeof(float), cudaMemcpyHostToDevice) != cudaSuccess) {
-        printf("cudaMemcpy error\n");
+    if (cudaMemcpy(cuda_x,x, n*sizeof(float), cudaMemcpyHostToDevice) != cudaSuccess) {
+        printf("error in vector cudaMemcpy error %f\n", x[12]);
         exit(1);
     }
     // cudaMemcpy(cuda_A, A, m*n*sizeof(float), cudaMemcpyHostToDevice);
@@ -244,7 +243,8 @@ main(int argc, char **argv) {
         strncpy(name_buf,argv[1],1024);
         strcat(name_buf, "/");
         strcat(name_buf,buf);
-        benchmark_gpu_gemv_file(m,n,name_buf,vec, y, &dat);
+        //benchmark_gpu_gemv_file(m,n,name_buf,vec, y, &dat);
+        benchmark_gpu_gemv_cache_file(m, n, name_buf,vec, y, &dat);
         write_data_entry(out,&dat);
         printf("  size: %dx%d total time: %f\n", m,n,time_diff(&dat.start, &dat.total));
         free(vec);

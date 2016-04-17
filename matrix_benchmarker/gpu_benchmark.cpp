@@ -101,7 +101,7 @@ benchmark_gpu_gemv_cache_file(int m, int n, char *filename, float *x, float *y, 
     float bet = 0.0f;
     float *A, *cuda_A, *cuda_x, *cuda_y;
     gettimeofday(&dat->start, NULL); 
-    GPU_Cache cache = new GPU_Cache(1000);
+    GPU_Cache *cache = new GPU_Cache(1000);
     A = (float *) malloc(m*n*sizeof(float));
     gettimeofday(&dat->alloc, NULL); 
     
@@ -125,8 +125,8 @@ benchmark_gpu_gemv_cache_file(int m, int n, char *filename, float *x, float *y, 
         exit(1);
     }
     // cudaMemcpy(cuda_A, A, m*n*sizeof(float), cudaMemcpyHostToDevice);
-    if (!cache.get(m, n, &A, &cuda_A)) {
-        cache.put_and_malloc(m, n, &A, &cuda_A));
+    if (!cache->get(m, n,(void **) &A, (void **)&cuda_A)) {
+        cache->put_and_malloc(m, n, (void**)&A, (void**)&cuda_A);
     }
 
     gettimeofday(&dat->memcopy, NULL); 

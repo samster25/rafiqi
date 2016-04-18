@@ -17,6 +17,8 @@ randomPattern:
 	python generate_access_patterns.py $(manifesto) $(manifesto_used) random
 standardPattern:
 	python generate_access_patterns.py $(manifesto) $(manifesto_used) standard
+repeatsPattern:
+	python generate_access_patterns.py $(manifesto) $(manifesto_used) repeats
 benchmark:
 	mkdir -p data
 	./bin/gpu_benchmark $(data) $(manifesto_used) $(stats)

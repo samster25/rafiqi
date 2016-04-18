@@ -2,13 +2,8 @@ data := /work/matrix_models
 manifesto := /work/matrix_models/manifesto.txt.example
 manifesto_used := /work/matrix_models/manifesto.txt
 stats := ./data/$(shell date +%s)_data.csv
-<<<<<<< HEAD
 num_trials = 2
-
 start := 128
-=======
-start := 129
->>>>>>> benchmark_caching
 end := 16384 
 step := 2048
 

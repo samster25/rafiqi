@@ -12,6 +12,7 @@
 #define DEV_NUM 0
 
 struct bench_time {
+    int trial_num;
     int m;
     int n;
     struct timeval start;
@@ -24,6 +25,8 @@ struct bench_time {
     struct timeval total;
     double rss;
 };
+
+const char* CSV_HEADER = "trial_num,m,n,filesize,alloc,disk_IO,cuda_alloc,gpu_memcopy,compute,memcopy_back,total\n";
 
 void 
 cpu_gemv_naive(int m, int n, float *A, float *x, float *y) {
@@ -65,12 +68,12 @@ time_diff(struct timeval *tv1, struct timeval *tv2) {
 
 void
 write_data_header(FILE *f) {
-    fprintf(f,"m,n,filesize,alloc,disk_IO,cuda_alloc,gpu_memcopy,compute,memcopy_back,total\n");
+    fputs(CSV_HEADER, f);
 }
 
 void
 write_data_entry(FILE *f, struct bench_time *dat) {
-    fprintf(f,"%d,%d,",dat->m, dat->n);
+    fprintf(f,"%d,%d,%d,", dat->trial_num,dat->m, dat->n);
     fprintf(f,"%lu,",dat->m*dat->n*sizeof(float));
     fprintf(f,"%.10f,", time_diff(&dat->start, &dat->alloc));
     fprintf(f,"%.10f,", time_diff(&dat->alloc, &dat->disk_IO));
@@ -145,12 +148,15 @@ benchmark_gpu_gemv_file(int m, int n, char *filename, float *x, float *y, struct
 }
 
 
+
 int
 main(int argc, char **argv) {
-    if (argc < 4) {
-        printf("incorrect args!!\n");
+    if (argc < 5) {
+        printf("Usage: %s matrix_directory manifesto_path output_name num_trials\n", argv[0]);
 	    return -1;
     }
+    int num_trials = atoi(argv[4]);
+
     FILE *f = fopen(argv[2], "r");
     if (!f) {
         printf("couldn't open manifest of files: %s\n", argv[2]);
@@ -163,34 +169,39 @@ main(int argc, char **argv) {
     FILE *out = fopen(argv[3], "w+");
     write_data_header(out);
     printf("Starting Benchmark!\n\n");
-    while (fgets (buf, 1024, f)!=NULL) {
-        char *p = buf;
-        int m = atoi(buf);
-        while (*p != 'x' and *p != 0)
+    for (int i=0; i < num_trials;i++) {
+        printf("Beginning trial #%d\n", i);
+        while (fgets (buf, 1024, f)!=NULL) {
+            char *p = buf;
+            int m = atoi(buf);
+            while (*p != 'x' and *p != 0)
+                p++;
             p++;
-        p++;
-        int n = atoi(p);
-        while (*p != '\n' and *p != 0)
-            p++;
-        *p = 0;
-        float *vec;
-        if (!(vec = gen_rand_matrix(n,1))) {
-            printf("error! gen vector\n");
+            int n = atoi(p);
+            while (*p != '\n' and *p != 0)
+                p++;
+            *p = 0;
+            float *vec;
+            if (!(vec = gen_rand_matrix(n,1))) {
+                printf("error! gen vector\n");
+            }
+
+            float *y;
+            if (!(y = (float *)  malloc(m*sizeof(float)))) {
+                printf("error mallocing y\n");
+            }
+
+            strncpy(name_buf,argv[1],1024);
+            strcat(name_buf, "/");
+            strcat(name_buf,buf);
+            benchmark_gpu_gemv_file(m,n,name_buf,vec, y, &dat);
+            dat.trial_num = i;
+            write_data_entry(out,&dat);
+            printf("  size: %dx%d total time: %f\n", m,n,time_diff(&dat.start, &dat.total));
+            free(vec);
+            free(y);
         }
-            
-        float *y;
-        if (!(y = (float *)  malloc(m*sizeof(float)))) {
-            printf("error mallocing y\n");
-        }
-        
-        strncpy(name_buf,argv[1],1024);
-        strcat(name_buf, "/");
-        strcat(name_buf,buf);
-        benchmark_gpu_gemv_file(m,n,name_buf,vec, y, &dat);
-        write_data_entry(out,&dat);
-        printf("  size: %dx%d total time: %f\n", m,n,time_diff(&dat.start, &dat.total));
-        free(vec);
-        free(y);
+        rewind(f);
     }
     fclose(f);
     fclose(out);

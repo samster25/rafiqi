@@ -1,8 +1,6 @@
 import numpy as np
 import os, sys
 
-dir_name = "/scratch/sammy/matrix_models"
-
 def gen_matrix(m, n, directory):
     data = np.random.randn(m,n).astype(np.float32)
     data.tofile(directory + "/" + str(m) + "x" + str(n))

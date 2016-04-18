@@ -1,6 +1,7 @@
 data := /scratch/sammy/matrix_models
 manifesto := /scratch/sammy/matrix_models/manifesto.txt
 stats := ./data/$(shell date +%s)_data.csv
+num_trials = 2
 
 start := 128
 end := 16384 
@@ -13,4 +14,4 @@ build:
 	nvcc -lcublas -O3 gpu_benchmark.cpp -o bin/gpu_benchmark
 benchmark:
 	mkdir -p data
-	./bin/gpu_benchmark $(data) $(manifesto) $(stats)
+	./bin/gpu_benchmark $(data) $(manifesto) $(stats) $(num_trials)

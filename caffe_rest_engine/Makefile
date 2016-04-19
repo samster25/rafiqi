@@ -19,5 +19,6 @@ LIBRARY = -L/scratch/sammy/opencv/lib -lopencv_core -lopencv_imgproc -lopencv_im
 all:
 	$(CC) $(INCLUDE) classification.cpp -DUSE_OPENCV -o exercise $(LIBRARY)
 
-
+go_server:
+	go build -o server_exec ./server/*.go  
 

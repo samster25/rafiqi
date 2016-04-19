@@ -32,6 +32,7 @@ func (w Worker) Start() {
 			case currJob := <- w.WorkQueue:
 				fmt.Printf("Job received by a worker (ID: %d)\n", w.ID)
 				res := w.classify(currJob)
+				currJob.Output <- res
 				fmt.Printf("The result of classification: %s\n", res)
 			case <- w.Quit:
 				fmt.Println("The worker has been signalled to shut down. Ending now.")

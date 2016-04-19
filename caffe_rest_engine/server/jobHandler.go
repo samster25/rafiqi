@@ -11,7 +11,7 @@ var WorkQueue chan Job = make(chan Job)
 type Job struct {
 	Model string
 	Image string
-	w http.ResponseWriter
+	Output chan string
 }
 
 func JobHandler(w http.ResponseWriter, r *http.Request) {
@@ -26,10 +26,20 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid JSON "+err.Error(), http.StatusBadRequest)
     	return
 	}
-	//unpackedJob.w = w
-	fmt.Println("Added to work queue.\n")
+	unpackedJob.Output = make(chan string)
+	fmt.Println("\nAdded to work queue.")
 	WorkQueue <- unpackedJob
-	w.WriteHeader(http.StatusCreated)
-	return
+	for {
+		select {
+		case classified := <-unpackedJob.Output:
+			fmt.Println("Request returning.")
+			tmp := map[string]string{"output": string(classified)}
+			marshalled, _ := json.Marshal(tmp)
+			w.Header().Set("Content-Type", "application/json")
+  			w.Write(marshalled)
+  			return
+		}
+	}
+	//w.WriteHeader(http.StatusCreated)
 
 }

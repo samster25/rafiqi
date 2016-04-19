@@ -7,10 +7,13 @@ import (
 )
 
 var (
-	nworkers = flag.Int("nworkers", 4, "Enter the number of workers wanted.")
+	nworkers = flag.Int("n", 4, "Enter the number of workers wanted.")
 )
 
 func main() {
+
+	flag.Parse()
+	
 	fmt.Println("Starting the dispatcher!")
 	fmt.Println("nworker %d", *nworkers)
 	dis := NewDispatcher("placeholder", *nworkers)

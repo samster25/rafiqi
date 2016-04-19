@@ -20,5 +20,6 @@ all:
 	$(CC) $(INCLUDE) classification.cpp -DUSE_OPENCV -o exercise $(LIBRARY)
 
 go_server:
-	go build -o server_exec ./server/*.go  
+	go build -o bin/server_exec ./server/*.go
+
 

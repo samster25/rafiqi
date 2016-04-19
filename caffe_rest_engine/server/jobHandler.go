@@ -10,7 +10,7 @@ var WorkQueue chan Job = make(chan Job)
 
 type Job struct {
 	Model string
-	Image string
+	Image string //This can probably stay - we can just pass in base64 image strings into Caffe and have it decode. 
 	Output chan string
 }
 
@@ -31,7 +31,7 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 	WorkQueue <- unpackedJob
 	for {
 		select {
-		case classified := <-unpackedJob.Output:
+		case classified := <- unpackedJob.Output:
 			fmt.Println("Request returning.")
 			tmp := map[string]string{"output": string(classified)}
 			marshalled, _ := json.Marshal(tmp)
@@ -40,6 +40,4 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
   			return
 		}
 	}
-	//w.WriteHeader(http.StatusCreated)
-
 }

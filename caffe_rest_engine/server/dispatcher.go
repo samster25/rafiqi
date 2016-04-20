@@ -16,7 +16,7 @@ func NewDispatcher(policy string, nworkers int) Dispatcher {
 		Policy: policy,
 		NWorkers: nworkers,
 		Stop: make(chan bool),
-		WorkersQueue: make(chan chan Job)}
+		WorkersQueue: make(chan chan Job, nworkers)}
 	return dispat
 }
 

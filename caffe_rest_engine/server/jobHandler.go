@@ -29,15 +29,15 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 	unpackedJob.Output = make(chan string)
 	fmt.Println("\nAdded to work queue.")
 	WorkQueue <- unpackedJob
-	for {
-		select {
-		case classified := <- unpackedJob.Output:
-			fmt.Println("Request returning.")
-			tmp := map[string]string{"output": string(classified)}
-			marshalled, _ := json.Marshal(tmp)
-			w.Header().Set("Content-Type", "application/json")
-  			w.Write(marshalled)
-  			return
-		}
+
+	select {
+	case classified := <- unpackedJob.Output:
+		fmt.Println("Request returning.")
+		tmp := map[string]string{"output": string(classified)}
+		marshalled, _ := json.Marshal(tmp)
+		w.Header().Set("Content-Type", "application/json")
+			w.Write(marshalled)
+			return
 	}
+	
 }

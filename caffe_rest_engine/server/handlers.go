@@ -4,10 +4,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"github.com/boltdb/bolt"
 )
 
 var WorkQueue chan Job = make(chan Job)
-var models map[string]*Model
+
+const (
+	DB_NAME = "models.db"
+)
+
+var MODELS_BUCKET = []byte("models")
 
 type Job struct {
 	Model  string
@@ -16,7 +23,20 @@ type Job struct {
 }
 
 func init() {
-	models = make(map[string]*Model)
+	db, err := bolt.Open(DB_NAME, 0666, nil)
+	if err != nil {
+		panic("Failed to open database: " + err.Error())
+	}
+
+	defer db.Close()
+
+	db.Update(func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists(MODELS_BUCKET)
+		if err != nil {
+			panic("Failed to create models bucket!")
+		}
+		return nil
+	})
 }
 
 func writeResp(w http.ResponseWriter, resp interface{}, status int) {
@@ -68,9 +88,8 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		writeResp(w, resp, http.StatusInternalServerError)
 		return
 	} else {
+		panic("Not implemented. Implement DB code here.")
 		for name, modelURL := range reg.Models {
-			model := NewModelFromURL(name, modelURL)
-			models[name] = &model
 		}
 
 		modelKeys := make([]string, len(models))

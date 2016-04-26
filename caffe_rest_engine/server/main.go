@@ -21,6 +21,7 @@ func main() {
 
 	fmt.Println("Registering HTTP Function")
 	http.HandleFunc("/classify", JobHandler)
+	http.HandleFunc("/register", RegisterHandler)
 
 	fmt.Println("HTTP Server listening on 127.0.0.1:8000")
 	err := http.ListenAndServe("localhost:8000", nil)

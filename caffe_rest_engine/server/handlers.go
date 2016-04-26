@@ -7,11 +7,22 @@ import (
 )
 
 var WorkQueue chan Job = make(chan Job)
+var models map[string]*Model
 
 type Job struct {
 	Model  string
 	Image  string //This can probably stay - we can just pass in base64 image strings into Caffe and have it decode.
 	Output chan string
+}
+
+func init() {
+	models = make(map[string]*Model)
+}
+
+func writeResp(w http.ResponseWriter, resp interface{}, status int) {
+	json, _ := json.Marshal(resp)
+	w.WriteHeader(status)
+	w.Write(json)
 }
 
 func JobHandler(w http.ResponseWriter, r *http.Request) {
@@ -38,6 +49,46 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(marshalled)
 		return
+	}
+
+}
+
+func RegisterHandler(w http.ResponseWriter, r *http.Request) {
+	var reg RegisterRequest
+	decoder := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+
+	err := decoder.Decode(&reg)
+	if err != nil {
+		resp := RegisterResponse{
+			Success: false,
+			Error:   err.Error(),
+		}
+
+		writeResp(w, resp, http.StatusInternalServerError)
+		return
+	} else {
+		for name, modelURL := range reg.Models {
+			model := NewModelFromURL(name, modelURL)
+			models[name] = &model
+		}
+
+		modelKeys := make([]string, len(models))
+
+		i := 0
+		for k := range models {
+			modelKeys[i] = k
+			i++
+		}
+
+		resp := RegisterResponse{
+			Success:   true,
+			AllModels: modelKeys,
+		}
+
+		writeResp(w, resp, 200)
+		return
+
 	}
 
 }

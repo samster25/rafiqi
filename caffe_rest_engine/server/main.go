@@ -1,9 +1,9 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net/http"
-	"flag"
 )
 
 var (
@@ -13,7 +13,7 @@ var (
 func main() {
 
 	flag.Parse()
-	
+
 	fmt.Println("Starting the dispatcher!")
 	fmt.Println("nworker %d", *nworkers)
 	dis := NewDispatcher("placeholder", *nworkers)
@@ -28,6 +28,3 @@ func main() {
 		fmt.Println(err.Error())
 	}
 }
-
-
-

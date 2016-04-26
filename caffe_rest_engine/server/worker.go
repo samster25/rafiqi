@@ -5,18 +5,18 @@ import (
 )
 
 type Worker struct {
-	ID int 
-	WorkQueue chan Job
+	ID          int
+	WorkQueue   chan Job
 	WorkerQueue chan chan Job
-	Quit chan bool
+	Quit        chan bool
 }
 
 func NewWorker(id int, workers chan chan Job) Worker {
 	return Worker{
-		ID: id,
-		WorkQueue: make(chan Job),
+		ID:          id,
+		WorkQueue:   make(chan Job),
 		WorkerQueue: workers,
-		Quit: make(chan bool)}
+		Quit:        make(chan bool)}
 }
 
 func (w Worker) classify(job Job) string {
@@ -24,17 +24,17 @@ func (w Worker) classify(job Job) string {
 }
 
 func (w Worker) Start() {
-	go func () {
+	go func() {
 		for {
 			w.WorkerQueue <- w.WorkQueue
 
 			select {
-			case currJob := <- w.WorkQueue:
+			case currJob := <-w.WorkQueue:
 				fmt.Printf("Job received by a worker (ID: %d)\n", w.ID)
 				res := w.classify(currJob)
 				currJob.Output <- res
 				fmt.Printf("The result of classification: %s\n", res)
-			case <- w.Quit:
+			case <-w.Quit:
 				fmt.Println("The worker has been signalled to shut down. Ending now.")
 				return
 			}
@@ -43,7 +43,7 @@ func (w Worker) Start() {
 }
 
 func (w Worker) Stop() {
-	go func () {
+	go func() {
 		w.Quit <- true
 	}()
 }

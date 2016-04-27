@@ -2,8 +2,19 @@ package main
 
 type B64Model string
 
+type ModelFile struct {
+	URL  string
+	Blob string `json:"blob"`
+}
+
+type ModelRequest struct {
+	LabelFile   ModelFile `json:"labels"`
+	MeanFile    ModelFile `json:"means"`
+	WeightsFile ModelFile `json:"weights"`
+	ModFile     ModelFile `json:"model"`
+}
 type RegisterRequest struct {
-	Models map[string]string `json:"models"`
+	Models map[string]ModelRequest `json:"models"`
 }
 
 type RegisterResponse struct {

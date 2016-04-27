@@ -5,3 +5,4 @@ matrix_benchmarker/data/*
 matrix_benchmarker/matrix_models
 caffe_rest_engine/bin/*
 caffe_rest_engine/server/models.db
+caffe_rest_engine/models/*

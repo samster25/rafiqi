@@ -97,8 +97,8 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		modelArray := make([]Model, len(reg.Models))
 
 		i := 0
-		for name, modelURL := range reg.Models {
-			model := NewModelFromURL(name, modelURL)
+		for name, modelReq := range reg.Models {
+			model := NewModelFromURL(name, modelReq)
 			modelArray[i] = model
 			i++
 		}

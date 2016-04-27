@@ -1,8 +1,18 @@
 package main
 
+type ModelFile struct {
+	URL  string
+	Blob []byte
+}
+
+type FilePath string
+
 type Model struct {
-	Name string
-	Path string
+	Name        string
+	WeightsPath FilePath
+	ModelPath   FilePath
+	LabelsPath  FilePath
+	MeanPath    FilePath
 }
 
 func NewModel(name string, body []byte) Model {

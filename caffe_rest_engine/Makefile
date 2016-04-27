@@ -18,3 +18,11 @@ LIBRARY = -L$(OPENCV)/lib -lopencv_core -lopencv_imgproc -lopencv_imgcodecs \
 
 all:
 	$(CC) $(INCLUDE) classification.cpp -DUSE_OPENCV -o exercise $(LIBRARY)
+
+test:
+	./exercise   models/bvlc_reference_caffenet/deploy.prototxt \
+    models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel   data/ilsvrc12/imagenet_mean.binaryproto \
+    data/ilsvrc12/synset_words.txt   images/cat.jpg
+
+go_server:
+	go build -o bin/server_exec ./server/*.go

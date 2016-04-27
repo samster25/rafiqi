@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -46,6 +48,15 @@ func writeResp(w http.ResponseWriter, resp interface{}, status int) {
 	w.Write(json)
 }
 
+func writeError(w http.ResponseWriter, err error) {
+	resp := RegisterResponse{
+		Success: false,
+		Error:   err.Error(),
+	}
+
+	writeResp(w, resp, http.StatusInternalServerError)
+}
+
 func JobHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "Invalid method - only POST requests are valid for this endpoint.", 405)
@@ -80,13 +91,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	err := decoder.Decode(&reg)
 	if err != nil {
-		resp := RegisterResponse{
-			Success: false,
-			Error:   err.Error(),
-		}
-
-		writeResp(w, resp, http.StatusInternalServerError)
-		return
+		writeError(w, err)
 	} else {
 
 		modelArray := make([]Model, len(reg.Models))
@@ -98,18 +103,32 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 			i++
 		}
 
-		for model := range modelArray {
-			var buf bytes.Buffer
-			db.Update(func(tx *bolt.Tx) error {
+		for _, model := range modelArray {
+			var encModel bytes.Buffer
+			enc := gob.NewEncoder(&encModel)
 
-				b := tx.Bucket(MODELS_BUCKET)
-				err = b.Put([]byte(name), []byte(modelURL))
+			err := db.Update(func(tx *bolt.Tx) error {
+				err := enc.Encode(model)
 				if err != nil {
 					return err
 				}
+
+				b := tx.Bucket(MODELS_BUCKET)
+				err = b.Put([]byte(model.Name), encModel.Bytes())
+				if err != nil {
+					return err
+				}
+
+				encModel.Truncate(0)
 				return nil
 			})
+
+			if err != nil {
+				writeError(w, err)
+				return
+			}
 		}
+
 		modelKeys := make([]string, 0)
 
 		db.View(func(tx *bolt.Tx) error {
@@ -117,7 +136,13 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 			c := b.Cursor()
 
 			for k, v := c.First(); k != nil; k, v = c.Next() {
-				modelKeys = append(modelKeys, string(k))
+				buf := bytes.NewBuffer(v)
+				dec := gob.NewDecoder(buf)
+				var decModel Model
+				dec.Decode(&decModel)
+				s := fmt.Sprintf("%v|%v|%v|%v|%v", string(k), decModel.WeightsPath,
+					decModel.ModelPath, decModel.LabelsPath, decModel.MeanPath)
+				modelKeys = append(modelKeys, s)
 			}
 
 			return nil

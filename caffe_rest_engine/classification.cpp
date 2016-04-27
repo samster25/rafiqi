@@ -26,6 +26,7 @@ class Classifier {
              const string& label_file);
 
   std::vector<Prediction> Classify(const cv::Mat& img, int N = 5);
+  std::vector<Prediction> Classify(std::vector<char>& data, int N = 5);
 
  private:
   void SetMean(const string& mean_file);
@@ -115,6 +116,24 @@ std::vector<Prediction> Classifier::Classify(const cv::Mat& img, int N) {
 
   return predictions;
 }
+
+std::vector<Prediction> Classifier::Classify(std::vector<char>& data, int N) {
+  //cv::Mat raw = cv::Mat(1, num_bytes, CV_8UC1, data);
+  cv::Mat img = cv::imdecode(data, CV_LOAD_IMAGE_UNCHANGED);
+  //cv::Mat img = cv::Mat(raw);
+  std::vector<float> output = Predict(img);
+
+  N = std::min<int>(labels_.size(), N);
+  std::vector<int> maxN = Argmax(output, N);
+  std::vector<Prediction> predictions;
+  for (int i = 0; i < N; ++i) {
+    int idx = maxN[i];
+    predictions.push_back(std::make_pair(labels_[idx], output[idx]));
+  }
+
+  return predictions;
+}
+
 
 /* Load the mean file in binaryproto format. */
 void Classifier::SetMean(const string& mean_file) {
@@ -241,15 +260,27 @@ int main(int argc, char** argv) {
   string mean_file    = argv[3];
   string label_file   = argv[4];
   Classifier classifier(model_file, trained_file, mean_file, label_file);
+  std::cout << "built classifer\n"; 
+  char *file_name = argv[5];
+  
+  std::ifstream file;
+  file.open(file_name, std::ios::binary);
+  std::cout << "opened file " << file_name << "\n";
 
-  string file = argv[5];
-
+  file.seekg(0, std::ios::end);
+  int size = file.tellg();
+  file.seekg(0, std::ios::beg);
+  std::cout << "file size: " << size << "\n";
+  std::vector<char> buffer(size);
+  std::cout << "before read" << file << "\n";
+  file.read(buffer.data(),size);
   std::cout << "---------- Prediction for "
             << file << " ----------" << std::endl;
-
-  cv::Mat img = cv::imread(file, -1);
-  CHECK(!img.empty()) << "Unable to decode image " << file;
-  std::vector<Prediction> predictions = classifier.Classify(img);
+  std::cout << "before classify\n";
+  //cv::Mat img = cv::imread(file, -1);
+  //CHECK(!img.empty()) << "Unable to decode image " << file;
+  //std::vector<Prediction> predictions = classifier.Classify(img);
+  std::vector<Prediction> predictions = classifier.Classify(buffer);
 
   /* Print the top N predictions. */
   for (size_t i = 0; i < predictions.size(); ++i) {

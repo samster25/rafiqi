@@ -10,7 +10,7 @@
 #include <string>
 #include <utility>
 #include <vector>
-
+#include "classification.h"
 #ifdef USE_OPENCV
 using namespace caffe;  // NOLINT(build/namespaces)
 using std::string;
@@ -26,7 +26,7 @@ class Classifier {
              const string& label_file);
 
   std::vector<Prediction> Classify(const cv::Mat& img, int N = 5);
-  std::vector<Prediction> Classify(std::vector<char>& data, int N = 5);
+  std::vector<Prediction> Classify(cv::_InputArray& data, int N = 5);
 
  private:
   void SetMean(const string& mean_file);
@@ -55,7 +55,6 @@ Classifier::Classifier(const string& model_file,
 #else
   Caffe::set_mode(Caffe::GPU);
 #endif
-
   /* Load the network. */
   net_.reset(new Net<float>(model_file, TEST));
   net_->CopyTrainedLayersFrom(trained_file);
@@ -117,12 +116,9 @@ std::vector<Prediction> Classifier::Classify(const cv::Mat& img, int N) {
   return predictions;
 }
 
-std::vector<Prediction> Classifier::Classify(std::vector<char>& data, int N) {
-  //cv::Mat raw = cv::Mat(1, num_bytes, CV_8UC1, data);
+std::vector<Prediction> Classifier::Classify(cv::_InputArray& data, int N) {
   cv::Mat img = cv::imdecode(data, CV_LOAD_IMAGE_UNCHANGED);
-  //cv::Mat img = cv::Mat(raw);
   std::vector<float> output = Predict(img);
-
   N = std::min<int>(labels_.size(), N);
   std::vector<int> maxN = Argmax(output, N);
   std::vector<Prediction> predictions;
@@ -245,6 +241,58 @@ void Classifier::Preprocess(const cv::Mat& img,
     << "Input channels are not wrapping the input layer of the network.";
 }
 
+c_classifier classifier_initialize(char* model_file, char* trained_file,
+                                      char* mean_file, char* label_file)
+{
+  ::google::InitGoogleLogging("inference_server");
+  Classifier(string(model_file), string(trained_file), \
+                        string(mean_file), string(label_file));
+  return reinterpret_cast<void*>(new Classifier(string(model_file), string(trained_file), \
+                        string(mean_file), string(label_file)));
+}
+
+const char* classifier_classify(c_classifier ptr,
+                                char* buffer, size_t length)
+{
+    try
+    {
+        cv::_InputArray array(buffer, length);
+        
+        cv::Mat img = imdecode(array, -1);
+
+        if (img.empty())
+            throw std::invalid_argument("could not decode image");
+
+        std::vector<Prediction> predictions;
+        Classifier *classifier = reinterpret_cast<Classifier*>(ptr); 
+        predictions = classifier->Classify(img);
+
+        /* Write the top N predictions in JSON format. */
+        std::ostringstream os;
+        os << "[";
+        for (size_t i = 0; i < predictions.size(); ++i)
+        {
+            Prediction p = predictions[i];
+            os << "{\"confidence\":" << std::fixed << std::setprecision(4)
+               << p.second << ",";
+            os << "\"label\":" << "\"" << p.first << "\"" << "}";
+            if (i != predictions.size() - 1)
+                os << ",";
+        }
+        os << "]";
+
+        errno = 0;
+        std::string str = os.str();
+        return strdup(str.c_str());
+    }
+    catch (const std::invalid_argument&)
+    {
+        errno = EINVAL;
+        return NULL;
+    }
+}
+
+
 int main(int argc, char** argv) {
   if (argc != 6) {
     std::cerr << "Usage: " << argv[0]
@@ -260,19 +308,15 @@ int main(int argc, char** argv) {
   string mean_file    = argv[3];
   string label_file   = argv[4];
   Classifier classifier(model_file, trained_file, mean_file, label_file);
-  std::cout << "built classifer\n"; 
   char *file_name = argv[5];
   
   std::ifstream file;
   file.open(file_name, std::ios::binary);
-  std::cout << "opened file " << file_name << "\n";
 
   file.seekg(0, std::ios::end);
   int size = file.tellg();
   file.seekg(0, std::ios::beg);
-  std::cout << "file size: " << size << "\n";
   std::vector<char> buffer(size);
-  std::cout << "before read" << file << "\n";
   file.read(buffer.data(),size);
   std::cout << "---------- Prediction for "
             << file << " ----------" << std::endl;
@@ -280,7 +324,9 @@ int main(int argc, char** argv) {
   //cv::Mat img = cv::imread(file, -1);
   //CHECK(!img.empty()) << "Unable to decode image " << file;
   //std::vector<Prediction> predictions = classifier.Classify(img);
-  std::vector<Prediction> predictions = classifier.Classify(buffer);
+  
+  cv::_InputArray arr(buffer.data(), size);
+  std::vector<Prediction> predictions = classifier.Classify(arr);
 
   /* Print the top N predictions. */
   for (size_t i = 0; i < predictions.size(); ++i) {

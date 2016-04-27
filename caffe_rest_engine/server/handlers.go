@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,6 +11,7 @@ import (
 )
 
 var WorkQueue chan Job = make(chan Job)
+var db *bolt.DB
 
 const (
 	DB_NAME = "models.db"
@@ -23,12 +26,11 @@ type Job struct {
 }
 
 func init() {
-	db, err := bolt.Open(DB_NAME, 0666, nil)
+	var err error
+	db, err = bolt.Open(DB_NAME, 0666, nil)
 	if err != nil {
 		panic("Failed to open database: " + err.Error())
 	}
-
-	defer db.Close()
 
 	db.Update(func(tx *bolt.Tx) error {
 		_, err := tx.CreateBucketIfNotExists(MODELS_BUCKET)
@@ -41,8 +43,18 @@ func init() {
 
 func writeResp(w http.ResponseWriter, resp interface{}, status int) {
 	json, _ := json.Marshal(resp)
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	w.Write(json)
+}
+
+func writeError(w http.ResponseWriter, err error) {
+	resp := RegisterResponse{
+		Success: false,
+		Error:   err.Error(),
+	}
+
+	writeResp(w, resp, http.StatusInternalServerError)
 }
 
 func JobHandler(w http.ResponseWriter, r *http.Request) {
@@ -53,6 +65,7 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(&unpackedJob)
 	defer r.Body.Close()
+
 	if err != nil {
 		http.Error(w, "Invalid JSON "+err.Error(), http.StatusBadRequest)
 		return
@@ -65,9 +78,7 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 	case classified := <-unpackedJob.Output:
 		fmt.Println("Request returning.")
 		tmp := map[string]string{"output": string(classified)}
-		marshalled, _ := json.Marshal(tmp)
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(marshalled)
+		writeResp(w, tmp, 200)
 		return
 	}
 
@@ -80,25 +91,62 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	err := decoder.Decode(&reg)
 	if err != nil {
-		resp := RegisterResponse{
-			Success: false,
-			Error:   err.Error(),
-		}
-
-		writeResp(w, resp, http.StatusInternalServerError)
-		return
+		writeError(w, err)
 	} else {
-		panic("Not implemented. Implement DB code here.")
-		for name, modelURL := range reg.Models {
-		}
 
-		modelKeys := make([]string, len(models))
+		modelArray := make([]Model, len(reg.Models))
 
 		i := 0
-		for k := range models {
-			modelKeys[i] = k
+		for name, modelReq := range reg.Models {
+			model := NewModelFromURL(name, modelReq)
+			modelArray[i] = model
 			i++
 		}
+
+		for _, model := range modelArray {
+			var encModel bytes.Buffer
+			enc := gob.NewEncoder(&encModel)
+
+			err := db.Update(func(tx *bolt.Tx) error {
+				err := enc.Encode(model)
+				if err != nil {
+					return err
+				}
+
+				b := tx.Bucket(MODELS_BUCKET)
+				err = b.Put([]byte(model.Name), encModel.Bytes())
+				if err != nil {
+					return err
+				}
+
+				encModel.Truncate(0)
+				return nil
+			})
+
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+		}
+
+		modelKeys := make([]string, 0)
+
+		db.View(func(tx *bolt.Tx) error {
+			b := tx.Bucket(MODELS_BUCKET)
+			c := b.Cursor()
+
+			for k, v := c.First(); k != nil; k, v = c.Next() {
+				buf := bytes.NewBuffer(v)
+				dec := gob.NewDecoder(buf)
+				var decModel Model
+				dec.Decode(&decModel)
+				s := fmt.Sprintf("%v|%v|%v|%v|%v", string(k), decModel.WeightsPath,
+					decModel.ModelPath, decModel.LabelsPath, decModel.MeanPath)
+				modelKeys = append(modelKeys, s)
+			}
+
+			return nil
+		})
 
 		resp := RegisterResponse{
 			Success:   true,

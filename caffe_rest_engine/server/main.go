@@ -24,7 +24,7 @@ func main() {
 	http.HandleFunc("/register", RegisterHandler)
 
 	fmt.Println("HTTP Server listening on 127.0.0.1:8000")
-	err := http.ListenAndServe("localhost:8000", nil)
+	err := http.ListenAndServe("0.0.0.0:8000", nil)
 	if err != nil {
 		fmt.Println(err.Error())
 	}

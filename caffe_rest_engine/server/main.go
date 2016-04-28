@@ -1,5 +1,13 @@
 package main
 
+// #cgo pkg-config: opencv
+// #cgo LDFLAGS: -L../../../caffe/build/lib -lcaffe -lglog -lboost_system -lboost_thread
+// #cgo CXXFLAGS: -std=c++11 -I../../../caffe/include -I.. -O2 -fomit-frame-pointer -Wall
+// #include <stdlib.h>
+// #include "classification.h"
+import "C"
+
+//import "unsafe"
 import (
 	"flag"
 	"fmt"
@@ -15,7 +23,7 @@ func main() {
 	flag.Parse()
 
 	fmt.Println("Starting the dispatcher!")
-	fmt.Println("nworker %d", *nworkers)
+	fmt.Println("nworker", *nworkers)
 	dis := NewDispatcher("placeholder", *nworkers)
 	dis.StartDispatcher()
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -25,7 +26,6 @@ func NewModelFromURL(name string, modelReq ModelRequest) Model {
 	if err != nil {
 		panic("Error creating models file: " + err.Error())
 	}
-	fmt.Printf("%v", modelReq.WeightsFile.Blob)
 
 	DownloadAndWrite(name, name+"_labels",
 		modelReq.LabelFile.URL, []byte(modelReq.LabelFile.Blob))
@@ -35,10 +35,10 @@ func NewModelFromURL(name string, modelReq ModelRequest) Model {
 
 	return Model{
 		Name:        name,
-		WeightsPath: name + "_weights",
-		ModelPath:   name + "_mod",
-		LabelsPath:  name + "_labels",
-		MeanPath:    name + "_mean",
+		WeightsPath: fmt.Sprintf("../models/%s/%s", name, name+"_weights"),
+		ModelPath:   fmt.Sprintf("../models/%s/%s", name, name+"_mod"),
+		LabelsPath:  fmt.Sprintf("../models/%s/%s", name, name+"_labels"),
+		MeanPath:    fmt.Sprintf("../models/%s/%s", name, name+"_mean"),
 	}
 }
 
@@ -65,7 +65,11 @@ func DownloadAndWrite(dirname string, filename string, url string, blob []byte) 
 			return err
 		}
 	} else {
-		ioutil.WriteFile(fname, blob, 0755)
+		data, err := base64.StdEncoding.DecodeString(string(blob))
+		if err != nil {
+			panic("failed to b64decode: " + err.Error())
+		}
+		ioutil.WriteFile(fname, data, 0755)
 	}
 
 	return nil

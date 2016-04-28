@@ -1,18 +1,14 @@
-#ifndef CLASSIFIER_API_H
-#define CLASSIFIER_API_H
-
-
-
-typedef void * c_classifier;
-
+#ifndef CLASSIFICATION_H
+#define CLASSIFICATION_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-  c_classifier classifier_initialize(char* model_file, char* trained_file, \
-                                        char* mean_file, char* label_file);
-  const char* classifier_classify(c_classifier ptr, \
-                                char* buffer, size_t length);
+
+typedef void * c_classifier;
+c_classifier classifier_initialize(char*, char*, char* mean_file, char*);
+const char* classifier_classify(c_classifier, char*, size_t);
+
 #ifdef __cplusplus
 }
 #endif

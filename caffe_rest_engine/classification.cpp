@@ -241,7 +241,7 @@ void Classifier::Preprocess(const cv::Mat& img,
     << "Input channels are not wrapping the input layer of the network.";
 }
 
-c_classifier classifier_initialize(char* model_file, char* trained_file,
+extern "C" c_classifier classifier_initialize(char* model_file, char* trained_file,
                                       char* mean_file, char* label_file)
 {
   ::google::InitGoogleLogging("inference_server");
@@ -293,7 +293,7 @@ const char* classifier_classify(c_classifier ptr,
 }
 
 
-int main(int argc, char** argv) {
+int mainOLD(int argc, char** argv) {
   if (argc != 6) {
     std::cerr << "Usage: " << argv[0]
               << " deploy.prototxt network.caffemodel"
@@ -336,7 +336,7 @@ int main(int argc, char** argv) {
   }
 }
 #else
-int main(int argc, char** argv) {
+int mainOLD(int argc, char** argv) {
   LOG(FATAL) << "This example requires OpenCV; compile with USE_OPENCV.";
 }
 #endif  // USE_OPENCV

@@ -26,3 +26,7 @@ test:
 
 go_server:
 	go build -o bin/server_exec ./server/*.go
+
+compile:
+	g++ -c -fpic -DUSEOPENCV -rdynamic $(INCLUDE) classification.cpp
+	g++ -shared -o libclass.so classification.o

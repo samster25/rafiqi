@@ -1,20 +1,10 @@
 package main
 
-// #cgo pkg-config: opencv
-// #cgo LDFLAGS: -L../../../caffe/build/lib -lcaffe -lglog -lboost_system -lboost_thread
-// #cgo CXXFLAGS: -std=c++11 -I../../../caffe/include -I.. -O2 -fomit-frame-pointer -Wall
-// #include <stdlib.h>
-// #include "classification.h"
-import "C"
-import "unsafe"
-
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 
 	"github.com/boltdb/bolt"
@@ -81,73 +71,19 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var modelGob []byte
-	err = db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket(MODELS_BUCKET)
-		v := b.Get([]byte(job.Model))
-		if v == nil {
-			panic("You idiot. You passed in a missing model.")
+	job.Output = make(chan string)
+	fmt.Println("\nAdded to work queue.")
+	WorkQueue <- job
+
+	select {
+	case classified := <-job.Output:
+		fmt.Println("Request returning.")
+		tmp := map[string]string{
+			"output": classified,
 		}
-
-		modelGob = make([]byte, len(v))
-
-		copy(modelGob, v)
-		return nil
-	})
-
-	fmt.Println("LEKEKEKEKEKEKE:, ", len(modelGob))
-
-	if err != nil {
-		panic("error in ransaction! " + err.Error())
+		writeResp(w, tmp, 200)
+		return
 	}
-
-	buf := bytes.NewBuffer(modelGob)
-	dec := gob.NewDecoder(buf)
-
-	var model Model
-	dec.Decode(&model)
-	fmt.Println("HEY %v", model)
-
-	data, err := base64.StdEncoding.DecodeString(job.Image)
-
-	if err != nil {
-		panic("Failed to b64 decode image: " + err.Error())
-	}
-
-	var cclass C.c_classifier
-
-	cmean := C.CString(model.MeanPath)
-	clabel := C.CString(model.LabelsPath)
-	cweights := C.CString(model.WeightsPath)
-	cmodel := C.CString(model.ModelPath)
-
-	cclass, err = C.classifier_initialize(cmodel, cweights, cmean, clabel)
-	if err != nil {
-		panic("err in initialize: " + err.Error())
-	}
-
-	cstr, err := C.classifier_classify(cclass, (*C.char)(unsafe.Pointer(&data[0])), C.size_t(len(data)))
-
-	if err != nil {
-		panic("error classifying: " + err.Error())
-	}
-
-	defer C.free(unsafe.Pointer(cstr))
-
-	io.WriteString(w, C.GoString(cstr))
-
-	/*
-		job.Output = make(chan string)
-		fmt.Println("\nAdded to work queue.")
-		WorkQueue <- job
-
-		select {
-		case classified := <-job.Output:
-			fmt.Println("Request returning.")
-			tmp := map[string]string{"output": string(classified)}
-			writeResp(w, tmp, 200)
-			return
-		}*/
 
 }
 

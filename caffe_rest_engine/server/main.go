@@ -22,10 +22,10 @@ func main() {
 
 	flag.Parse()
 
-	//fmt.Println("Starting the dispatcher!")
-	//fmt.Println("nworker %d", *nworkers)
-	//dis := NewDispatcher("placeholder", *nworkers)
-	//dis.StartDispatcher()
+	fmt.Println("Starting the dispatcher!")
+	fmt.Println("nworker", *nworkers)
+	dis := NewDispatcher("placeholder", *nworkers)
+	dis.StartDispatcher()
 
 	fmt.Println("Registering HTTP Function")
 	http.HandleFunc("/classify", JobHandler)

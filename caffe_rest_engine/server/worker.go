@@ -2,7 +2,7 @@ package main
 
 // #cgo pkg-config: opencv
 // #cgo LDFLAGS: -L../../../caffe/build/lib -lcaffe -lglog -lboost_system -lboost_thread
-// #cgo CXXFLAGS: -std=c++11 -I../../../caffe/include -I.. -O2 -fomit-frame-pointer -Wall
+// #cgo CXXFLAGS: -std=c++11 -I../../../caffe/include -I.. -O2 -fomit-frame-pointer -Wall -DUSE_OPENCV
 // #include <stdlib.h>
 // #include "classification.h"
 import "C"
@@ -12,9 +12,23 @@ import (
 	"encoding/base64"
 	"encoding/gob"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/boltdb/bolt"
 )
+
+type LoadedModelsMap struct {
+	sync.RWMutex
+	Models map[string]ModelEntry
+}
+
+type ModelEntry struct {
+	sync.Mutex
+	Classifier C.c_model
+}
+
+var loadedModels LoadedModelsMap
 
 type Worker struct {
 	ID          int
@@ -23,12 +37,48 @@ type Worker struct {
 	Quit        chan bool
 }
 
+func handleError(msg string, err error) {
+	panic(msg + err.Error())
+}
+
 func NewWorker(id int, workers chan chan Job) Worker {
 	return Worker{
 		ID:          id,
 		WorkQueue:   make(chan Job),
 		WorkerQueue: workers,
 		Quit:        make(chan bool)}
+}
+
+func (w Worker) InitializeModel(m *Model) *ModelEntry {
+	var entry ModelEntry
+	loadedModels.RLock()
+	entry, ok := loadedModels.Models[m.Name]
+	loadedModels.RUnlock()
+
+	if !ok {
+		cmean := C.CString(m.MeanPath)
+		clabel := C.CString(m.LabelsPath)
+		cweights := C.CString(m.WeightsPath)
+		cmodel := C.CString(m.ModelPath)
+
+		loadedModels.Lock()
+		// Ensure no one added this model between the RUnlock and here
+		_, ok = loadedModels.Models[m.Name]
+		if !ok {
+			cclass, err := C.model_init(cmodel, cweights, cmean, clabel)
+
+			if err != nil {
+				handleError("init failed: ", err)
+			}
+
+			entry = ModelEntry{Classifier: cclass}
+			loadedModels.Models[m.Name] = entry
+		}
+		loadedModels.Unlock()
+	}
+
+	return &entry
+
 }
 
 func (w Worker) classify(job Job) string {
@@ -62,20 +112,19 @@ func (w Worker) classify(job Job) string {
 		panic("Failed to b64 decode image: " + err.Error())
 	}
 
-	var cclass C.c_classifier
+	entry := w.InitializeModel(&model)
 
-	cmean := C.CString(model.MeanPath)
-	clabel := C.CString(model.LabelsPath)
-	cweights := C.CString(model.WeightsPath)
-	cmodel := C.CString(model.ModelPath)
-
-	cclass, err = C.classifier_initialize(cmodel, cweights, cmean, clabel)
-	defer C.free(unsafe.Pointer(cclass))
-	if err != nil {
-		panic("err in initialize: " + err.Error())
-	}
-
-	cstr, err := C.classifier_classify(cclass, (*C.char)(unsafe.Pointer(&data[0])), C.size_t(len(data)))
+	fmt.Println("ABOUT TO LOCK", w.ID)
+	entry.Lock()
+	fmt.Println("inside: \n", w.ID)
+	time.Sleep(1 * time.Second)
+	cstr, err := C.model_classify(
+		entry.Classifier,
+		(*C.char)(unsafe.Pointer(&data[0])),
+		C.size_t(len(data)),
+	)
+	entry.Unlock()
+	fmt.Println("Just unlocked: ", w.ID)
 
 	if err != nil {
 		panic("error classifying: " + err.Error())
@@ -108,4 +157,12 @@ func (w Worker) Stop() {
 	go func() {
 		w.Quit <- true
 	}()
+}
+
+func init() {
+	loadedModels = LoadedModelsMap{
+		Models: make(map[string]ModelEntry),
+	}
+
+	C.classifier_init()
 }

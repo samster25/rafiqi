@@ -78,10 +78,7 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 	select {
 	case classified := <-job.Output:
 		fmt.Println("Request returning.")
-		tmp := map[string]string{
-			"output": classified,
-		}
-		writeResp(w, tmp, 200)
+		writeResp(w, classified, 200)
 		return
 	}
 

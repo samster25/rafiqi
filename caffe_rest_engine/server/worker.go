@@ -20,7 +20,7 @@ import (
 
 type LoadedModelsMap struct {
 	sync.RWMutex
-	Models map[string]ModelEntry
+	Models map[string]*ModelEntry
 }
 
 type ModelEntry struct {
@@ -50,7 +50,7 @@ func NewWorker(id int, workers chan chan Job) Worker {
 }
 
 func (w Worker) InitializeModel(m *Model) *ModelEntry {
-	var entry ModelEntry
+	var entry *ModelEntry
 	loadedModels.RLock()
 	entry, ok := loadedModels.Models[m.Name]
 	loadedModels.RUnlock()
@@ -71,13 +71,13 @@ func (w Worker) InitializeModel(m *Model) *ModelEntry {
 				handleError("init failed: ", err)
 			}
 
-			entry = ModelEntry{Classifier: cclass}
+			entry = &ModelEntry{Classifier: cclass}
 			loadedModels.Models[m.Name] = entry
 		}
 		loadedModels.Unlock()
 	}
 
-	return &entry
+	return entry
 
 }
 
@@ -161,7 +161,7 @@ func (w Worker) Stop() {
 
 func init() {
 	loadedModels = LoadedModelsMap{
-		Models: make(map[string]ModelEntry),
+		Models: make(map[string]*ModelEntry),
 	}
 
 	C.classifier_init()

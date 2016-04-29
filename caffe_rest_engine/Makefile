@@ -17,13 +17,10 @@ LIBRARY =           -L$(shell pwd)/bin -lclass \
                     -Wl,-rpath,$(OPENCV)/lib \
                     -Wl,-rpath,$(CAFFE)/build/lib \
                     -Wl,-rpath,$(shell pwd)/bin
-start:
-	./bin/server_exec   models/bvlc_reference_caffenet/deploy.prototxt \
-    models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel   data/ilsvrc12/imagenet_mean.binaryproto \
-    data/ilsvrc12/synset_words.txt   images/cat.jpg
-
-go_server:
+server:
 	CGO_LDFLAGS='$(LIBRARY)' CGO_CFLAGS='-I$(shell pwd)/cpp' go build -o bin/server_exec go/*.go
 compile:
-	g++ -c -fpic -DUSE_OPENCV $(INCLUDE) ./cpp/classification.cpp -o ./bin/classification.o
+	g++ -c -fpic -DUSE_OPENCV $(INCLUDE) -o ./bin/classification.o ./cpp/classification.cpp
 	g++ -shared -o ./bin/libclass.so ./bin/classification.o
+	rm ./bin/*.o
+

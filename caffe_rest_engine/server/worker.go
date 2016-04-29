@@ -13,7 +13,6 @@ import (
 	"encoding/gob"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/boltdb/bolt"
 )
@@ -114,17 +113,13 @@ func (w Worker) classify(job Job) string {
 
 	entry := w.InitializeModel(&model)
 
-	fmt.Println("ABOUT TO LOCK", w.ID)
 	entry.Lock()
-	fmt.Println("inside: \n", w.ID)
-	time.Sleep(1 * time.Second)
 	cstr, err := C.model_classify(
 		entry.Classifier,
 		(*C.char)(unsafe.Pointer(&data[0])),
 		C.size_t(len(data)),
 	)
 	entry.Unlock()
-	fmt.Println("Just unlocked: ", w.ID)
 
 	if err != nil {
 		panic("error classifying: " + err.Error())

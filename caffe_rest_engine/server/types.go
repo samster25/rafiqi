@@ -1,12 +1,14 @@
 package main
 
 import (
+	"container/list"
 	"encoding/base64"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"sync"
 )
 
 type Model struct {
@@ -15,6 +17,63 @@ type Model struct {
 	ModelPath   string
 	LabelsPath  string
 	MeanPath    string
+}
+
+type HashyLinkedList struct {
+	sync.Mutex
+	queue *list.List
+	jobs  map[string]*list.List
+}
+
+func NewHashyLinkedList() *HashyLinkedList {
+	return &HashyLinkedList{
+		queue: list.New(),
+		jobs:  make(map[string]*list.List),
+	}
+}
+
+func (h *HashyLinkedList) AddJob(job Job) {
+	h.Lock()
+	defer h.Unlock()
+	newElem := h.queue.PushBack(job)
+	_, ok := h.jobs[job.Model]
+	if !ok {
+		h.jobs[job.Model] = list.New()
+	}
+
+	h.jobs[job.Model].PushBack(newElem)
+
+}
+
+func (h *HashyLinkedList) PopFront(modelName string, batchAmt int) []Job {
+	h.Lock()
+	defer h.Unlock()
+	result := make([]Job, batchAmt)
+	frontElem := h.queue.Front()
+	frontJob := (frontElem.Value).(Job)
+	jobList, ok := h.jobs[frontJob.Model]
+
+	if !ok {
+		return nil
+	}
+
+	jobListLen := jobList.Len()
+
+	if jobListLen == 0 {
+		return nil
+	}
+
+	if batchAmt > jobListLen {
+		batchAmt = jobListLen - 1
+	}
+
+	for i := 0; i < batchAmt; i++ {
+		currQueuePtr := (jobList.Remove(jobList.Front())).(*list.Element)
+		job := (h.queue.Remove(currQueuePtr)).(Job)
+		result[i] = job
+	}
+
+	return result
 }
 
 //func NewModel(name string, body []byte) Model {

@@ -17,10 +17,18 @@ LIBRARY =           -L$(shell pwd)/bin -lclass \
                     -Wl,-rpath,$(OPENCV)/lib \
                     -Wl,-rpath,$(CAFFE)/build/lib \
                     -Wl,-rpath,$(shell pwd)/bin
+CPP_FILES := $(wildcard ./cpp/*.cpp)
+OBJ_FILES := $(addprefix ./bin/,$(notdir $(CPP_FILES:.cpp=.o)))
+
+bin/%.o: cpp/%.cpp
+	$(CC) $(INCLUDE) -c -fpic -o $@ $<
+
+compile: $(OBJ_FILES)
+	mkdir -p bin
+	$(CC) -shared -o ./bin/libclass.so $(OBJ_FILES) 
+	rm ./bin/*.o
 server:
 	CGO_LDFLAGS='$(LIBRARY)' CGO_CFLAGS='-I$(shell pwd)/cpp' go build -o bin/server_exec go/*.go
-compile:
-	g++ -c -fpic -DUSE_OPENCV $(INCLUDE) -o ./bin/classification.o ./cpp/classification.cpp
-	g++ -shared -o ./bin/libclass.so ./bin/classification.o
-	rm ./bin/*.o
-
+all: compile server
+clean:
+	rm -rf ./bin/*  

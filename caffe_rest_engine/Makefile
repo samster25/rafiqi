@@ -23,9 +23,7 @@ start:
     data/ilsvrc12/synset_words.txt   images/cat.jpg
 
 go_server:
-	CGO_LDFLAGS='$(LIBRARY)' go build -o bin/server_exec
+	CGO_LDFLAGS='$(LIBRARY)' CGO_CFLAGS='-I$(shell pwd)/cpp' go build -o bin/server_exec go/*.go
 compile:
 	g++ -c -fpic -DUSE_OPENCV $(INCLUDE) ./cpp/classification.cpp -o ./bin/classification.o
 	g++ -shared -o ./bin/libclass.so ./bin/classification.o
-lib:
-	echo $(LIBRARY)

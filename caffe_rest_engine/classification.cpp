@@ -241,18 +241,21 @@ void Classifier::Preprocess(const cv::Mat& img,
     << "Input channels are not wrapping the input layer of the network.";
 }
 
-extern "C" c_classifier classifier_initialize(char* model_file, char* trained_file,
-                                      char* mean_file, char* label_file)
-{
+void classifier_init() {
   ::google::InitGoogleLogging("inference_server");
-  Classifier(string(model_file), string(trained_file), \
-                        string(mean_file), string(label_file));
+}
+
+
+c_model model_init(char* model_file, char* trained_file, char* mean_file, char* label_file) {
   return reinterpret_cast<void*>(new Classifier(string(model_file), string(trained_file), \
                         string(mean_file), string(label_file)));
 }
 
-const char* classifier_classify(c_classifier ptr,
-                                char* buffer, size_t length)
+void model_destroy(c_model model) {
+    delete reinterpret_cast<Classifier*>(model); 
+}
+
+const char* model_classify(c_model model, char* buffer, size_t length)
 {
     try
     {
@@ -264,7 +267,7 @@ const char* classifier_classify(c_classifier ptr,
             throw std::invalid_argument("could not decode image");
 
         std::vector<Prediction> predictions;
-        Classifier *classifier = reinterpret_cast<Classifier*>(ptr); 
+        Classifier *classifier = reinterpret_cast<Classifier*>(model); 
         predictions = classifier->Classify(img);
 
         /* Write the top N predictions in JSON format. */
@@ -290,53 +293,5 @@ const char* classifier_classify(c_classifier ptr,
         errno = EINVAL;
         return NULL;
     }
-}
-
-
-int mainOLD(int argc, char** argv) {
-  if (argc != 6) {
-    std::cerr << "Usage: " << argv[0]
-              << " deploy.prototxt network.caffemodel"
-              << " mean.binaryproto labels.txt img.jpg" << std::endl;
-    return 1;
-  }
-
-  ::google::InitGoogleLogging(argv[0]);
-
-  string model_file   = argv[1];
-  string trained_file = argv[2];
-  string mean_file    = argv[3];
-  string label_file   = argv[4];
-  Classifier classifier(model_file, trained_file, mean_file, label_file);
-  char *file_name = argv[5];
-  
-  std::ifstream file;
-  file.open(file_name, std::ios::binary);
-
-  file.seekg(0, std::ios::end);
-  int size = file.tellg();
-  file.seekg(0, std::ios::beg);
-  std::vector<char> buffer(size);
-  file.read(buffer.data(),size);
-  std::cout << "---------- Prediction for "
-            << file << " ----------" << std::endl;
-  std::cout << "before classify\n";
-  //cv::Mat img = cv::imread(file, -1);
-  //CHECK(!img.empty()) << "Unable to decode image " << file;
-  //std::vector<Prediction> predictions = classifier.Classify(img);
-  
-  cv::_InputArray arr(buffer.data(), size);
-  std::vector<Prediction> predictions = classifier.Classify(arr);
-
-  /* Print the top N predictions. */
-  for (size_t i = 0; i < predictions.size(); ++i) {
-    Prediction p = predictions[i];
-    std::cout << std::fixed << std::setprecision(4) << p.second << " - \""
-              << p.first << "\"" << std::endl;
-  }
-}
-#else
-int mainOLD(int argc, char** argv) {
-  LOG(FATAL) << "This example requires OpenCV; compile with USE_OPENCV.";
 }
 #endif  // USE_OPENCV

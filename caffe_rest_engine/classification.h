@@ -5,9 +5,12 @@
 extern "C" {
 #endif
 
-typedef void * c_classifier;
-c_classifier classifier_initialize(char*, char*, char* mean_file, char*);
-const char* classifier_classify(c_classifier, char*, size_t);
+typedef void * c_model;
+
+void classifier_init();
+c_model model_init(char*, char*, char*, char*);
+const char* model_classify(c_model, char*, size_t);
+void model_destroy(c_model);
 
 #ifdef __cplusplus
 }

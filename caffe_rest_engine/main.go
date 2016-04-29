@@ -1,13 +1,6 @@
 package main
-
-// #cgo LDFLAGS: -L/scratch/sammy/caffe/build/lib -lcaffe
-// #cgo LDFLAGS: -L/scratch/sammy/opencv/lib -lopencv_core -lopencv_imgproc -lopencv_imgcodecs
-// #cgo LDFLAGS: -Wl,-rpath,/scratch/sammy/opencv/lib -Wl,-rpath,/scratch/sammy/caffe/build/lib
-// #cgo LDFLAGS: -L/usr/local/cuda/lib64/ -lcudart -lcublas -lcurand -lglog -lboost_system -lboost_thread
-// #cgo CXXFLAGS: -std=c++11 -I/scratch/sammy/caffe/include -I/scratch/sammy/caffe/src -O2 -I/usr/local/cuda/include
-// #cgo CXXFLAGS: -I/scratch/sammy/opencv/include -fomit-frame-pointer -Wall -DUSE_OPENCV
 // #include <stdlib.h>
-// #include "classification.h"
+// #include "./cpp/classification.h"
 import "C"
 import "unsafe"
 
@@ -19,7 +12,7 @@ import (
 	"os"
 )
 
-var ctx C.c_classifier
+var model C.c_model
 
 func classify(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
@@ -33,7 +26,7 @@ func classify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cstr, err := C.classifier_classify(ctx, (*C.char)(unsafe.Pointer(&buffer[0])), C.size_t(len(buffer)))
+	cstr, err := C.model_classify(model, (*C.char)(unsafe.Pointer(&buffer[0])), C.size_t(len(buffer)))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -50,7 +43,8 @@ func main() {
 
 	log.Println("Initializing Caffe classifiers")
 	var err error
-	ctx, err = C.classifier_initialize(cmodel, ctrained, cmean, clabel)
+    C.classifier_init()
+	model, err = C.model_init(cmodel, ctrained, cmean, clabel)
 	if err != nil {
 		log.Fatalln("could not initialize classifier:", err)
 		return

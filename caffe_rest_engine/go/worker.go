@@ -1,4 +1,5 @@
 package main
+
 // #include <stdlib.h>
 // #include <classification.h>
 import "C"
@@ -27,8 +28,8 @@ var loadedModels LoadedModelsMap
 
 type Worker struct {
 	ID          int
-	WorkQueue   chan Job
-	WorkerQueue chan chan Job
+	WorkQueue   chan []Job
+	WorkerQueue chan chan []Job
 	Quit        chan bool
 }
 
@@ -36,10 +37,10 @@ func handleError(msg string, err error) {
 	panic(msg + err.Error())
 }
 
-func NewWorker(id int, workers chan chan Job) Worker {
+func NewWorker(id int, workers chan chan []Job) Worker {
 	return Worker{
 		ID:          id,
-		WorkQueue:   make(chan Job),
+		WorkQueue:   make(chan []Job),
 		WorkerQueue: workers,
 		Quit:        make(chan bool)}
 }
@@ -80,6 +81,7 @@ func (w Worker) classify(job Job) string {
 	var modelGob []byte
 	err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(MODELS_BUCKET)
+		fmt.Println(job.Model)
 		v := b.Get([]byte(job.Model))
 		if v == nil {
 			panic("You idiot. You passed in a missing model.")
@@ -90,7 +92,6 @@ func (w Worker) classify(job Job) string {
 		copy(modelGob, v)
 		return nil
 	})
-
 	if err != nil {
 		panic("error in transaction! " + err.Error())
 	}
@@ -109,6 +110,9 @@ func (w Worker) classify(job Job) string {
 
 	entry := w.InitializeModel(&model)
 
+	if entry.Classifier == nil {
+		fmt.Println("fuck me gently with chainsaw")
+	}
 	entry.Lock()
 	cstr, err := C.model_classify(
 		entry.Classifier,
@@ -131,11 +135,12 @@ func (w Worker) Start() {
 			w.WorkerQueue <- w.WorkQueue
 
 			select {
-			case currJob := <-w.WorkQueue:
+			case currJobs := <-w.WorkQueue:
 				fmt.Printf("Job received by a worker (ID: %d)\n", w.ID)
-				res := w.classify(currJob)
-				currJob.Output <- res
-				fmt.Printf("The result of classification: %s\n", res)
+				for _, val := range currJobs {
+					val.Output <- w.classify(val)
+				}
+				//fmt.Printf("The result of classification: %s\n", res)
 			case <-w.Quit:
 				fmt.Println("The worker has been signalled to shut down. Ending now.")
 				return

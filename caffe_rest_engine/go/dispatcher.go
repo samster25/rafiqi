@@ -4,11 +4,13 @@ import (
 	"fmt"
 )
 
+var WorkQueue *HashyLinkedList = NewHashyLinkedList()
+
 type Dispatcher struct {
 	Policy       string
 	NWorkers     int
 	Stop         chan bool
-	WorkersQueue chan chan Job
+	WorkersQueue chan chan []Job
 }
 
 func NewDispatcher(policy string, nworkers int) Dispatcher {
@@ -16,7 +18,7 @@ func NewDispatcher(policy string, nworkers int) Dispatcher {
 		Policy:       policy,
 		NWorkers:     nworkers,
 		Stop:         make(chan bool),
-		WorkersQueue: make(chan chan Job, nworkers)}
+		WorkersQueue: make(chan chan []Job, nworkers)}
 	return dispat
 }
 
@@ -29,17 +31,16 @@ func (dis Dispatcher) StartDispatcher() {
 
 	go func() {
 		for {
-			select {
-			case currJob := <-WorkQueue:
-				go func() {
-					currWorkerQueue := <-dis.WorkersQueue
-					currWorkerQueue <- currJob
-					fmt.Printf("Dispatched job with model %s to worker.\n", currJob.Model)
-				}()
-			case <-dis.Stop:
-				fmt.Printf("The dispatcher has been ordered to shutdown. All systems down.\n")
-				return
-			}
+			fmt.Println("wfafhiaf")
+			currJobs := WorkQueue.PopFront(MAX_BATCH_AMT)
+			fmt.Println(currJobs[0].Model)
+			fmt.Println("Hang forever")
+			go func() {
+				currWorkerQueue := <-dis.WorkersQueue
+				currWorkerQueue <- currJobs
+				fmt.Printf("Dispatched jobs to worker.\n")
+			}()
+			return
 		}
 	}()
 }

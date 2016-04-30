@@ -20,21 +20,24 @@ type Model struct {
 }
 
 type HashyLinkedList struct {
-	sync.Mutex
-	queue *list.List
-	jobs  map[string]*list.List
+	lock    sync.Mutex
+	condVar *sync.Cond
+	queue   *list.List
+	jobs    map[string]*list.List
 }
 
 func NewHashyLinkedList() *HashyLinkedList {
-	return &HashyLinkedList{
+	hll := &HashyLinkedList{
 		queue: list.New(),
 		jobs:  make(map[string]*list.List),
 	}
+	hll.condVar = sync.NewCond(&hll.lock)
+	return hll
 }
 
 func (h *HashyLinkedList) AddJob(job Job) {
-	h.Lock()
-	defer h.Unlock()
+	h.lock.Lock()
+	defer h.lock.Unlock()
 	newElem := h.queue.PushBack(job)
 	_, ok := h.jobs[job.Model]
 	if !ok {
@@ -42,21 +45,35 @@ func (h *HashyLinkedList) AddJob(job Job) {
 	}
 
 	h.jobs[job.Model].PushBack(newElem)
-
+	fmt.Println("job is added", ((newElem.Value).(Job)).Model)
+	h.condVar.Signal()
 }
 
-func (h *HashyLinkedList) PopFront(modelName string, batchAmt int) []Job {
-	h.Lock()
-	defer h.Unlock()
+func (h *HashyLinkedList) PopAny(batchAmt int) []Job {
+	//el := (h.queue.Front().Value).(Job)
+	return h.PopFront(batchAmt)
+}
+
+func (h *HashyLinkedList) PopFront(batchAmt int) []Job {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	for h.queue.Len() == 0 {
+		h.condVar.Wait()
+	}
 	result := make([]Job, batchAmt)
 	frontElem := h.queue.Front()
-	frontJob := (frontElem.Value).(Job)
-	jobList, ok := h.jobs[frontJob.Model]
-
-	if !ok {
+	if frontElem == nil {
+		fmt.Println("nothing in front")
 		return nil
 	}
-
+	frontJob := (frontElem.Value).(Job)
+	fmt.Println("in hll", frontJob.Model)
+	jobList, ok := h.jobs[frontJob.Model]
+	if !ok {
+		fmt.Println("Broken")
+		return nil
+	}
+	fmt.Println("the hoblist", h.jobs[frontJob.Model].Len())
 	jobListLen := jobList.Len()
 
 	if jobListLen == 0 {
@@ -64,7 +81,7 @@ func (h *HashyLinkedList) PopFront(modelName string, batchAmt int) []Job {
 	}
 
 	if batchAmt > jobListLen {
-		batchAmt = jobListLen - 1
+		batchAmt = jobListLen
 	}
 
 	for i := 0; i < batchAmt; i++ {
@@ -72,13 +89,9 @@ func (h *HashyLinkedList) PopFront(modelName string, batchAmt int) []Job {
 		job := (h.queue.Remove(currQueuePtr)).(Job)
 		result[i] = job
 	}
-
+	fmt.Println("we are hll end", result[0].Model)
 	return result
 }
-
-//func NewModel(name string, body []byte) Model {
-//	return Model{name, body}
-//}
 
 func NewModelFromURL(name string, modelReq ModelRequest) Model {
 	err := os.MkdirAll("../models/"+name, 0755)

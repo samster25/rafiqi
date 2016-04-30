@@ -1,16 +1,15 @@
 package main
+
 // #include <stdlib.h>
 // #include <classification.h>
 import "C"
 import "unsafe"
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/gob"
 	"fmt"
-	"sync"
-
 	"github.com/boltdb/bolt"
+	"sync"
 )
 
 type LoadedModelsMap struct {
@@ -101,7 +100,7 @@ func (w Worker) classify(job Job) string {
 	var model Model
 	dec.Decode(&model)
 
-	data, err := base64.StdEncoding.DecodeString(job.Image)
+	//	data, err := base64.StdEncoding.DecodeString(job.Image)
 
 	if err != nil {
 		panic("Failed to b64 decode image: " + err.Error())
@@ -112,8 +111,7 @@ func (w Worker) classify(job Job) string {
 	entry.Lock()
 	cstr, err := C.model_classify(
 		entry.Classifier,
-		(*C.char)(unsafe.Pointer(&data[0])),
-		C.size_t(len(data)),
+		job.Image,
 	)
 	entry.Unlock()
 

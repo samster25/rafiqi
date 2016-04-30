@@ -1,13 +1,17 @@
 package main
 
+// #include <stdlib.h>
+// #include <classification.h>
+import "C"
+import "unsafe"
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
-	"net/http"
-
 	"github.com/boltdb/bolt"
+	"net/http"
 )
 
 var WorkQueue chan Job = make(chan Job)
@@ -21,8 +25,13 @@ var MODELS_BUCKET = []byte("models")
 
 type Job struct {
 	Model  string
-	Image  string //This can probably stay - we can just pass in base64 image strings into Caffe and have it decode.
+	Image  C.c_mat //This can probably stay - we can just pass in base64 image strings into Caffe and have it decode.
 	Output chan string
+}
+
+type TempJob struct {
+	Model string
+	Image string
 }
 
 func init() {
@@ -61,11 +70,19 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "Invalid method - only POST requests are valid for this endpoint.", 405)
 	}
-	var job Job
+	var unpackedRes TempJob
 	decoder := json.NewDecoder(r.Body)
-	err := decoder.Decode(&job)
+	err := decoder.Decode(&unpackedRes)
 	defer r.Body.Close()
-
+	data, err := base64.StdEncoding.DecodeString(unpackedRes.Image)
+	if err != nil {
+		fmt.Println("Base64 error " + err.Error())
+		return
+	}
+	job := Job{
+		Model: unpackedRes.Model,
+		Image: C.make_mat((*C.char)(unsafe.Pointer(&data[0])), C.size_t(len(data))),
+	}
 	if err != nil {
 		http.Error(w, "Invalid JSON "+err.Error(), http.StatusBadRequest)
 		return

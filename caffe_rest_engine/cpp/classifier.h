@@ -41,6 +41,7 @@ class Classifier {
   shared_ptr<Net<float> > net_;
   cv::Size input_geometry_;
   int num_channels_;
+  int output_N_;
   cv::Mat mean_;
   std::vector<string> labels_;
 };

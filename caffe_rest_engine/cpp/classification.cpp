@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 #include "classification.h"
+
 using namespace caffe;  // NOLINT(build/namespaces)
 using std::string;
 
@@ -24,13 +25,16 @@ class Classifier {
 
   std::vector<Prediction> Classify(const cv::Mat& img, int N = 5);
   std::vector<Prediction> Classify(cv::_InputArray& data, int N = 5);
+  std::vector<std::vector<Prediction> > Classify(const std::vector<cv::Mat*>& img, int N = 5);
 
  private:
   void SetMean(const string& mean_file);
 
   std::vector<float> Predict(const cv::Mat& img);
+  std::vector<std::vector<float> > Predict(const std::vector<cv::Mat*>& imgs);
 
   void WrapInputLayer(std::vector<cv::Mat>* input_channels);
+  void WrapInputLayer(std::vector<cv::Mat>* input_channels, int n);
 
   void Preprocess(const cv::Mat& img,
                   std::vector<cv::Mat>* input_channels);
@@ -127,6 +131,22 @@ std::vector<Prediction> Classifier::Classify(cv::_InputArray& data, int N) {
   return predictions;
 }
 
+std::vector<std::vector<Prediction> > Classifier::Classify(const std::vector<cv::Mat*>& imgs, int N) {
+  std::vector<std::vector<float> >  outputs = Predict(imgs);
+  std::vector<std::vector<Prediction> > all_predictions;
+  N = std::min<int>(labels_.size(), N);
+  for (int j = 0; j < outputs.size(); ++j) {
+    std::vector<float> output = outputs[j];
+    std::vector<int> maxN = Argmax(output, N);
+    std::vector<Prediction> predictions;
+    for (int i = 0; i < N; ++i) {
+      int idx = maxN[i];
+      predictions.push_back(std::make_pair(labels_[idx], output[idx]));
+    }
+    all_predictions.push_back(predictions);
+  }
+  return all_predictions;
+}
 
 /* Load the mean file in binaryproto format. */
 void Classifier::SetMean(const string& mean_file) {
@@ -180,6 +200,27 @@ std::vector<float> Classifier::Predict(const cv::Mat& img) {
   return std::vector<float>(begin, end);
 }
 
+std::vector<std::vector<float> > Classifier::Predict(const std::vector<cv::Mat*>& imgs) {
+  Blob<float>* input_layer = net_->input_blobs()[0];
+  input_layer->Reshape(imgs.size(), num_channels_,
+                       input_geometry_.height, input_geometry_.width);
+  net_->Reshape();
+  for (int i = 0; i < imgs.size(); i++) {
+    std::vector<cv::Mat> input_channels;
+    WrapInputLayer(&input_channels, i);
+    Preprocess(*imgs[i], &input_channels);
+
+  }
+  net_->ForwardPrefilled();
+  std::vector<std::vector<float> > outputs;
+  Blob<float>* output_layer = net_->output_blobs()[0];
+  for (int i = 0; i < output_layer->num(); ++i) {
+    const float* begin = output_layer->cpu_data() + i * output_layer->channels();
+    const float* end = begin + output_layer->channels();
+    outputs.push_back(std::vector<float>(begin, end));
+  }
+  return outputs;
+}
 /* Wrap the input layer of the network in separate cv::Mat objects
  * (one per channel). This way we save one memcpy operation and we
  * don't need to rely on cudaMemcpy2D. The last preprocessing
@@ -192,6 +233,19 @@ void Classifier::WrapInputLayer(std::vector<cv::Mat>* input_channels) {
   int height = input_layer->height();
   float* input_data = input_layer->mutable_cpu_data();
   for (int i = 0; i < input_layer->channels(); ++i) {
+    cv::Mat channel(height, width, CV_32FC1, input_data);
+    input_channels->push_back(channel);
+    input_data += width * height;
+  }
+}
+
+void Classifier::WrapInputLayer(std::vector<cv::Mat>* input_channels, int n) {
+  Blob<float>* input_layer = net_->input_blobs()[0];
+  int width = input_layer->width();
+  int height = input_layer->height();
+  int channels = input_layer->channels();
+  float* input_data = input_layer->mutable_cpu_data() + n * width * height * channels;
+  for (int i = 0; i < channels; ++i) {
     cv::Mat channel(height, width, CV_32FC1, input_data);
     input_channels->push_back(channel);
     input_data += width * height;
@@ -248,6 +302,15 @@ c_model model_init(char* model_file, char* trained_file, char* mean_file, char* 
                         string(mean_file), string(label_file)));
 }
 
+c_mat make_mat(char *buffer, size_t length) {
+  cv::_InputArray array(buffer, length);
+  cv::Mat img = imdecode(array, -1);
+  if (img.empty()) {
+    return NULL;
+  }
+  return reinterpret_cast<c_mat>(new cv::Mat(img)); 
+}
+
 void model_destroy(c_model model) {
     delete reinterpret_cast<Classifier*>(model); 
 }
@@ -291,3 +354,44 @@ const char* model_classify(c_model model, char* buffer, size_t length)
         return NULL;
     }
 }
+const char** model_classify_batch(c_model model, c_mat* c_imgs, int num)
+{
+    try
+    {
+        const char **rtn = (const char **) malloc(num*sizeof(char*)); 
+        std::vector<std::vector<Prediction> > all_predictions;
+        Classifier *classifier = reinterpret_cast<Classifier*>(model);
+        cv::Mat **imgs_ptr = reinterpret_cast<cv::Mat**>(c_imgs);
+        std::vector<cv::Mat*> imgs(imgs_ptr, imgs_ptr + num); 
+        all_predictions = classifier->Classify(imgs);
+
+        /* Write the top N predictions in JSON format. */
+        for (int j=0; j < num; j++) {
+          std::vector<Prediction> predictions = all_predictions[j];
+          std::ostringstream os;
+          os << "[";
+          for (size_t i = 0; i < predictions.size(); ++i)
+          {
+              Prediction p = predictions[i];
+              os << "{\"confidence\":" << std::fixed << std::setprecision(4)
+                 << p.second << ",";
+              os << "\"label\":" << "\"" << p.first << "\"" << "}";
+              if (i != predictions.size() - 1)
+                  os << ",";
+          }
+          os << "]";
+
+          errno = 0;
+          std::string str = os.str();
+          rtn[j] = strdup(str.c_str());
+          delete imgs[j];  
+        }
+        return rtn;
+    }
+    catch (const std::invalid_argument&)
+    {
+        errno = EINVAL;
+        return NULL;
+    }
+}
+

@@ -1,3 +1,6 @@
+#ifndef __CLASSIFIER_H__
+#define __CLASSIFIER_H__
+
 #include <caffe/caffe.hpp>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -34,7 +37,6 @@ class Classifier {
 
   void Preprocess(const cv::Mat& img,
                   std::vector<cv::Mat>* input_channels);
-
  private:
   shared_ptr<Net<float> > net_;
   cv::Size input_geometry_;
@@ -42,4 +44,4 @@ class Classifier {
   cv::Mat mean_;
   std::vector<string> labels_;
 };
-
+#endif

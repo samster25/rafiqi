@@ -32,7 +32,7 @@ func TestSimpleHLL(t *testing.T) {
 	for i := 0; i < NUM_MODELS; i++ {
 		for j := 0; j < 3; j++ {
 			model := makeName(MODEL_NAME, i)
-			result := hll.PopFront(model, MAX_BATCH_AMT)
+			result := hll.PopFront(MAX_BATCH_AMT)
 			if result == nil {
 				t.Errorf("Result of PopFront is nil: %s", model)
 			} else {

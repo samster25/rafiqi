@@ -31,14 +31,10 @@ func (dis Dispatcher) StartDispatcher() {
 
 	go func() {
 		for {
-			fmt.Println("wfafhiaf")
 			currJobs := WorkQueue.PopFront(MAX_BATCH_AMT)
-			fmt.Println(currJobs[0].Model)
-			fmt.Println("Hang forever")
 			go func() {
 				currWorkerQueue := <-dis.WorkersQueue
 				currWorkerQueue <- currJobs
-				fmt.Printf("Dispatched jobs to worker.\n")
 			}()
 			return
 		}

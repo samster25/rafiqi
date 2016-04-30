@@ -1,16 +1,16 @@
 package main
 
 // #include <stdlib.h>
-// #include <classification.h>
+// #include "classification.h"
 import "C"
 import "unsafe"
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"github.com/boltdb/bolt"
+	"io/ioutil"
 	"net/http"
 )
 
@@ -31,7 +31,7 @@ type Job struct {
 
 type TempJob struct {
 	Model string
-	Image string
+	Image []byte
 }
 
 func init() {
@@ -70,23 +70,32 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "Invalid method - only POST requests are valid for this endpoint.", 405)
 	}
-	var unpackedRes TempJob
-	decoder := json.NewDecoder(r.Body)
-	err := decoder.Decode(&unpackedRes)
-	defer r.Body.Close()
-	data, err := base64.StdEncoding.DecodeString(unpackedRes.Image)
+	image, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		fmt.Println("Base64 error " + err.Error())
+		fmt.Println("Error reading image", err)
 		return
 	}
+	unpackedRes := TempJob{
+		Model: r.FormValue("model_name"),
+		Image: image,
+	}
+	//decoder := json.NewDecoder(r.Body)
+	//err := decoder.Decode(&unpackedRes)
+	defer r.Body.Close()
+
+	//data, err := base64.StdEncoding.DecodeString(unpackedRes.Image)
+	//if err != nil {
+	//	fmt.Println("Base64 error " + err.Error())
+	//	return
+	//}
 	job := Job{
 		Model: unpackedRes.Model,
-		Image: C.make_mat((*C.char)(unsafe.Pointer(&data[0])), C.size_t(len(data))),
+		Image: C.make_mat((*C.char)(unsafe.Pointer(&unpackedRes.Image[0])), C.size_t(len(unpackedRes.Image))),
 	}
-	if err != nil {
-		http.Error(w, "Invalid JSON "+err.Error(), http.StatusBadRequest)
-		return
-	}
+	//if err != nil {
+	//	http.Error(w, "Invalid JSON "+err.Error(), http.StatusBadRequest)
+	//	return
+	//}
 
 	job.Output = make(chan string)
 	fmt.Println("\nAdded to work queue.")

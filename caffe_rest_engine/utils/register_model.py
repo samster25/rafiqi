@@ -7,6 +7,9 @@ import sys
 
 def make_request(input):
     result = {}
+    if not input:
+        return result
+
     if input.startswith("http://") or input.startswith("https://"):
         # Remote URL
         result = {
@@ -25,16 +28,23 @@ def make_request(input):
 
 
 def register_model(name, model_path, weights_path, means_path, labels_path, server_url):
+    inner_data = {
+                'model': make_request(model_path),
+                'weights': make_request(weights_path),
+    }
+
+    if means_path:
+        inner_data['means'] = means_path
+    
+    if labels_path:
+        inner_data['labels'] = labels_path
+
+
     data = {
             'models': {
-                    name: {
-                        'model': make_request(model_path),
-                        'weights': make_request(weights_path),
-                        'means': make_request(means_path),
-                        'labels': make_request(labels_path),
-                    },
+                name: inner_data
+                }
             }
-        }
     full_url = "http://{0}/register".format(server_url)
     print "Registering", name, "at", full_url, "..."
     try:
@@ -53,10 +63,10 @@ def main():
             URL registration if the path is remote (i.e. prefixed with http[s]://).")
     parser.add_argument('weights_path', type=str, help="Path to weights file. Uses a blob if the file is local, \
             or URL registration if the path is remote (i.e. prefixed with http[s]://).")
-    parser.add_argument('means_path', type=str, help="Path to means file. Uses a blob if the file is local, \
-            or URL registration if the path is remote (i.e. prefixed with http[s]://).")
-    parser.add_argument('labels_path', type=str, help="Path to labels file. Uses a blob if the file is local, \
-            or URL registration if the path is remote (i.e. prefixed with http[s]://).")
+    parser.add_argument('--means_path', type=str, help="Path to means file. Uses a blob if the file is local, \
+            or URL registration if the path is remote (i.e. prefixed with http[s]://).", default="")
+    parser.add_argument('--labels_path', type=str, help="Path to labels file. Uses a blob if the file is local, \
+            or URL registration if the path is remote (i.e. prefixed with http[s]://).", default="")
 
     parser.add_argument('--server_url', type=str, default="localhost:8000",
             help="Server URL (without http). Defaults to localhost:8000")

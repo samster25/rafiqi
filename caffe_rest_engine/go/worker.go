@@ -76,13 +76,13 @@ func InitializeModel(m *Model) *ModelEntry {
 
 }
 
-func (w Worker) classify(job Job) string {
+func (w Worker) classify(job_model string, jobs []Job) []string {
 	var modelGob []byte
 	err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(MODELS_BUCKET)
-		v := b.Get([]byte(job.Model))
+		v := b.Get([]byte(job_model))
 		if v == nil {
-			err := errors.New("Missing model: " + job.Model)
+			err := errors.New("Missing model: " + job_model)
 			handleError("", err)
 			return err
 		}
@@ -94,29 +94,37 @@ func (w Worker) classify(job Job) string {
 	})
 	if err != nil {
 		handleError("error in transaction! ", err)
-		return ""
+		return nil
 	}
 
 	buf := bytes.NewBuffer(modelGob)
 	dec := gob.NewDecoder(buf)
-
 	var model Model
 	dec.Decode(&model)
 
 	entry := InitializeModel(&model)
 	entry.Lock()
-	cstr, err := C.model_classify(
+	batch_mats := make([]C.c_mat, len(jobs))
+	for i, job := range jobs {
+		batch_mats[i] = job.Image
+	}
+	cstr_arr, err := C.model_classify_batch(
 		entry.Classifier,
-		job.Image,
+		(*C.c_mat)(unsafe.Pointer(&batch_mats[0])),
+		C.int(len(batch_mats)),
 	)
 	entry.Unlock()
-
+	//byte_convert := [][]byte(cstr_arr)
 	if err != nil {
 		handleError("error classifying: ", err)
 	}
-
-	defer C.free(unsafe.Pointer(cstr))
-	return C.GoString(cstr)
+	go_results := (*[MAX_BATCH_AMT](*C.char))(unsafe.Pointer(cstr_arr))
+	final := make([]string, len(jobs))
+	for i := 0; i < len(jobs); i++ {
+		final[i] = C.GoString(go_results[i])
+	}
+	defer C.free(unsafe.Pointer(cstr_arr))
+	return final
 }
 
 func (w Worker) Start() {
@@ -125,12 +133,12 @@ func (w Worker) Start() {
 			w.WorkerQueue <- w.WorkQueue
 			select {
 			case currJobs := <-w.WorkQueue:
-				for _, val := range currJobs {
-					res := w.classify(val)
-					if res == "" {
-						res = "Error in classify. see error log for details."
-					}
-					val.Output <- res
+				res := w.classify(currJobs[0].Model, currJobs)
+				//if len(res) == 0 {
+				//	res = "Error in classify. see error log for details."
+				//}
+				for i := range res {
+					currJobs[i].Output <- res[i]
 				}
 				//fmt.Printf("The result of classification: %s\n", res)
 			case <-w.Quit:

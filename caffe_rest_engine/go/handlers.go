@@ -25,7 +25,7 @@ var MODELS_BUCKET = []byte("models")
 
 type Job struct {
 	Model  string
-	Image  C.c_mat //This can probably stay - we can just pass in base64 image strings into Caffe and have it decode.
+	Image  C.c_mat
 	Output chan string
 }
 
@@ -142,35 +142,47 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 				writeError(w, err)
 				return
 			}
+			InitializeModel(&model)
 		}
 
-		modelKeys := make([]string, 0)
-
-		db.View(func(tx *bolt.Tx) error {
-			b := tx.Bucket(MODELS_BUCKET)
-			c := b.Cursor()
-
-			for k, v := c.First(); k != nil; k, v = c.Next() {
-				buf := bytes.NewBuffer(v)
-				dec := gob.NewDecoder(buf)
-				var decModel Model
-				dec.Decode(&decModel)
-				s := fmt.Sprintf("%v|%v|%v|%v|%v", string(k), decModel.WeightsPath,
-					decModel.ModelPath, decModel.LabelsPath, decModel.MeanPath)
-				modelKeys = append(modelKeys, s)
-			}
-
-			return nil
-		})
-
 		resp := RegisterResponse{
-			Success:   true,
-			AllModels: modelKeys,
+			Success: true,
 		}
 
 		writeResp(w, resp, 200)
 		return
 
 	}
+
+}
+
+func ListHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Invalid Method: Only GET requests allowed to this endpoint.", 405)
+	}
+	modelKeys := make([]string, 0)
+
+	db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(MODELS_BUCKET)
+		c := b.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			buf := bytes.NewBuffer(v)
+			dec := gob.NewDecoder(buf)
+			var decModel Model
+			dec.Decode(&decModel)
+			s := fmt.Sprintf("%v|%v|%v|%v|%v", string(k), decModel.WeightsPath,
+				decModel.ModelPath, decModel.LabelsPath, decModel.MeanPath)
+			modelKeys = append(modelKeys, s)
+		}
+		return nil
+	})
+
+	resp := RegisterResponse{
+		Success:   true,
+		AllModels: modelKeys,
+	}
+
+	writeResp(w, resp, 200)
+	return
 
 }

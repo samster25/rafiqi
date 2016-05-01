@@ -34,10 +34,10 @@ def register_model(name, model_path, weights_path, means_path, labels_path, serv
     }
 
     if means_path:
-        inner_data['means'] = means_path
+        inner_data['means'] = make_request(means_path)
     
     if labels_path:
-        inner_data['labels'] = labels_path
+        inner_data['labels'] = make_request(labels_path)
 
 
     data = {

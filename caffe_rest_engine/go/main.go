@@ -18,10 +18,7 @@ var (
 	nworkers = flag.Int("n", 4, "Enter the number of workers wanted.")
 )
 
-func main() {
-
-	flag.Parse()
-	fmt.Println("Preloading and pre-init'ing models")
+func preload() {
 	var modelGob []byte
 	err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(MODELS_BUCKET)
@@ -41,20 +38,25 @@ func main() {
 	if err != nil {
 		panic("error in transaction! " + err.Error())
 	}
-	fmt.Println("Finished prefetching models into CPU Ram")
+}
 
+func main() {
+
+	flag.Parse()
+	fmt.Println("Preloading and pre-init'ing models")
+	preload()
+	fmt.Println("Finished prefetching models into CPU Ram")
 	fmt.Println("Starting the dispatcher!")
 	fmt.Println("nworker", *nworkers)
 	dis := NewDispatcher("placeholder", *nworkers)
 	dis.StartDispatcher()
-
 	fmt.Println("Registering HTTP Function")
 	http.HandleFunc("/classify", JobHandler)
 	http.HandleFunc("/register", RegisterHandler)
-
+	http.HandleFunc("/list", ListHandler)
 	fmt.Println("HTTP Server listening on 127.0.0.1:8000")
 	errhttp := http.ListenAndServe("0.0.0.0:8000", nil)
 	if errhttp != nil {
-		fmt.Println(err.Error())
+		fmt.Println(errhttp.Error())
 	}
 }

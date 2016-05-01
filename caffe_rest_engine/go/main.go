@@ -74,6 +74,12 @@ func setupLoggers() {
 
 }
 
+func Debugf(format string, v ...interface{}) {
+	if debugMode {
+		debugLogger.Printf(format, v)
+	}
+}
+
 func main() {
 	nworkers := flag.Int("n", 4, "Enter the number of workers wanted.")
 	flag.StringVar(&errorLog, "errorLog",
@@ -89,9 +95,13 @@ func main() {
 			string("verbose logging and times certain operations."))
 	flag.BoolVar(&noPreloadModels, "noPreloadModels", false, "Turn off model preloading.")
 	flag.Parse()
-	fmt.Println("Preloading and pre-init'ing models")
-	preload()
-	fmt.Println("Finished prefetching models into CPU Ram")
+	if noPreloadModels {
+		fmt.Println("Skipping preload...")
+	} else {
+		fmt.Println("Preloading and pre-init'ing models")
+		preload()
+		fmt.Println("Finished prefetching models into CPU Ram")
+	}
 
 	setupLoggers()
 

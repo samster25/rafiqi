@@ -10,11 +10,20 @@ import (
 	"flag"
 	"fmt"
 	"github.com/boltdb/bolt"
+	"io"
+	"log"
 	"net/http"
+	"os"
 )
 
 var (
-	nworkers = flag.Int("n", 4, "Enter the number of workers wanted.")
+	debugMode       bool
+	debugLog        string
+	errorLog        string
+	noPreloadModels bool
+
+	debugLogger *log.Logger
+	errorLogger *log.Logger
 )
 
 func preload() {
@@ -38,13 +47,64 @@ func preload() {
 		panic("error in transaction! " + err.Error())
 	}
 }
+func setupLoggers() {
+	var debugFile io.Writer
+	var err error
+	if debugLog == "" {
+		debugFile = os.Stdout
+	} else {
+		debugFile, err = os.OpenFile(debugLog, os.O_WRONLY, 0644)
+		if err != nil {
+			panic("Failed to open debug log: " + err.Error())
+		}
+	}
+	debugLogger = log.New(debugFile, "DEBUG: ", log.Lshortfile|log.LstdFlags)
+
+	var errorFile io.Writer
+	if errorLog == "" {
+		errorFile = os.Stderr
+	} else {
+		errorFile, err = os.OpenFile(errorLog, os.O_WRONLY, 0644)
+		if err != nil {
+			panic("Failed to open error log: " + err.Error())
+		}
+	}
+
+	errorLogger = log.New(errorFile, "Error: ", log.LstdFlags|log.Lshortfile)
+
+}
+
+func Debugf(format string, v ...interface{}) {
+	if debugMode {
+		debugLogger.Printf(format, v)
+	}
+}
 
 func main() {
+	nworkers := flag.Int("n", 4, "Enter the number of workers wanted.")
+	flag.StringVar(&errorLog, "errorLog",
+		"", "File location for error log. defaults to stderr",
+	)
+	flag.StringVar(&debugLog, "debugLog", "",
+		string("File location for debug log. ")+
+			string("Only meaningful if -debug is set. Defaults to stdout. "),
+	)
 
+	flag.BoolVar(&debugMode, "debug", false,
+		string("Enables debug mode, which has more")+
+			string("verbose logging and times certain operations."))
+	flag.BoolVar(&noPreloadModels, "noPreloadModels", false, "Turn off model preloading.")
 	flag.Parse()
-	fmt.Println("Preloading and pre-init'ing models")
-	preload()
-	fmt.Println("Finished prefetching models into CPU Ram")
+	if noPreloadModels {
+		fmt.Println("Skipping preload...")
+	} else {
+		fmt.Println("Preloading and pre-init'ing models")
+		preload()
+		fmt.Println("Finished prefetching models into CPU Ram")
+	}
+
+	setupLoggers()
+
 	fmt.Println("Starting the dispatcher!")
 	fmt.Println("nworker", *nworkers)
 	dis := NewDispatcher("placeholder", *nworkers)

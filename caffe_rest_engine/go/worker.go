@@ -7,6 +7,7 @@ import "unsafe"
 import (
 	"bytes"
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"github.com/boltdb/bolt"
 	"sync"
@@ -32,7 +33,7 @@ type Worker struct {
 }
 
 func handleError(msg string, err error) {
-	panic(msg + err.Error())
+	errorLogger.Printf("%s: %v", msg, err)
 }
 
 func NewWorker(id int, workers chan chan []Job) Worker {
@@ -81,7 +82,9 @@ func (w Worker) classify(job Job) string {
 		b := tx.Bucket(MODELS_BUCKET)
 		v := b.Get([]byte(job.Model))
 		if v == nil {
-			panic("You idiot. You passed in a missing model.")
+			err := errors.New("Missing model: " + job.Model)
+			handleError("", err)
+			return err
 		}
 
 		modelGob = make([]byte, len(v))
@@ -90,7 +93,8 @@ func (w Worker) classify(job Job) string {
 		return nil
 	})
 	if err != nil {
-		panic("error in transaction! " + err.Error())
+		handleError("error in transaction! ", err)
+		return ""
 	}
 
 	buf := bytes.NewBuffer(modelGob)
@@ -108,7 +112,7 @@ func (w Worker) classify(job Job) string {
 	entry.Unlock()
 
 	if err != nil {
-		panic("error classifying: " + err.Error())
+		handleError("error classifying: ", err)
 	}
 
 	defer C.free(unsafe.Pointer(cstr))
@@ -122,7 +126,11 @@ func (w Worker) Start() {
 			select {
 			case currJobs := <-w.WorkQueue:
 				for _, val := range currJobs {
-					val.Output <- w.classify(val)
+					res := w.classify(val)
+					if res == "" {
+						res = "Error in classify. see error log for details."
+					}
+					val.Output <- res
 				}
 				//fmt.Printf("The result of classification: %s\n", res)
 			case <-w.Quit:

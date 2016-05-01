@@ -71,7 +71,7 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	image, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		fmt.Println("Error reading image", err)
+		handleError("Error reading image", err)
 		return
 	}
 	unpackedRes := TempJob{

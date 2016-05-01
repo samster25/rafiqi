@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"github.com/boltdb/bolt"
 	"sync"
+	"time"
 )
 
 type LoadedModelsMap struct {
@@ -60,7 +61,9 @@ func InitializeModel(m *Model) *ModelEntry {
 		// Ensure no one added this model between the RUnlock and here
 		_, ok = loadedModels.Models[m.Name]
 		if !ok {
+			start := time.Now()
 			cclass, err := C.model_init(cmodel, cweights, cmean, clabel)
+			LogTimef("%v model_init", start, m.Name)
 
 			if err != nil {
 				handleError("init failed: ", err)
@@ -77,6 +80,7 @@ func InitializeModel(m *Model) *ModelEntry {
 }
 
 func (w Worker) classify(job Job) string {
+	Debugf("worker %d beginning classify", w.ID)
 	var modelGob []byte
 	err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(MODELS_BUCKET)
@@ -105,10 +109,12 @@ func (w Worker) classify(job Job) string {
 
 	entry := InitializeModel(&model)
 	entry.Lock()
+	start := time.Now()
 	cstr, err := C.model_classify(
 		entry.Classifier,
 		job.Image,
 	)
+	LogTimef("%v model_classify", start, job.Model)
 	entry.Unlock()
 
 	if err != nil {

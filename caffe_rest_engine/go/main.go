@@ -14,6 +14,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 )
 
 var (
@@ -24,6 +25,8 @@ var (
 
 	debugLogger *log.Logger
 	errorLogger *log.Logger
+
+	logFlags = log.Lshortfile | log.Ltime | log.Lmicroseconds
 )
 
 func preload() {
@@ -58,7 +61,7 @@ func setupLoggers() {
 			panic("Failed to open debug log: " + err.Error())
 		}
 	}
-	debugLogger = log.New(debugFile, "DEBUG: ", log.Lshortfile|log.LstdFlags)
+	debugLogger = log.New(debugFile, "DEBUG: ", logFlags)
 
 	var errorFile io.Writer
 	if errorLog == "" {
@@ -70,7 +73,7 @@ func setupLoggers() {
 		}
 	}
 
-	errorLogger = log.New(errorFile, "Error: ", log.LstdFlags|log.Lshortfile)
+	errorLogger = log.New(errorFile, "Error: ", logFlags)
 
 }
 
@@ -78,6 +81,11 @@ func Debugf(format string, v ...interface{}) {
 	if debugMode {
 		debugLogger.Printf(format, v)
 	}
+}
+
+func LogTimef(operation string, start time.Time, v ...interface{}) {
+	duration := (time.Now().UnixNano() - start.UnixNano()) / 1000000
+	Debugf(fmt.Sprintf("%v took %vs (%vms)", operation, float64(duration)/1000.0, duration), v...)
 }
 
 func main() {

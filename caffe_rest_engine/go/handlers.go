@@ -1,13 +1,17 @@
 package main
 
+// #include <stdlib.h>
+// #include "classification.h"
+import "C"
+import "unsafe"
 import (
 	"bytes"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
-	"net/http"
-
 	"github.com/boltdb/bolt"
+	"io/ioutil"
+	"net/http"
 )
 
 var db *bolt.DB
@@ -20,8 +24,13 @@ var MODELS_BUCKET = []byte("models")
 
 type Job struct {
 	Model  string
-	Image  string //This can probably stay - we can just pass in base64 image strings into Caffe and have it decode.
+	Image  C.c_mat
 	Output chan string
+}
+
+type TempJob struct {
+	Model string
+	Image []byte
 }
 
 func init() {
@@ -60,14 +69,20 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "Invalid method - only POST requests are valid for this endpoint.", 405)
 	}
-	var job Job
-	decoder := json.NewDecoder(r.Body)
-	err := decoder.Decode(&job)
+	image, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		fmt.Println("Error reading image", err)
+		return
+	}
+	unpackedRes := TempJob{
+		Model: r.FormValue("model_name"),
+		Image: image,
+	}
 	defer r.Body.Close()
 
-	if err != nil {
-		http.Error(w, "Invalid JSON "+err.Error(), http.StatusBadRequest)
-		return
+	job := Job{
+		Model: unpackedRes.Model,
+		Image: C.make_mat((*C.char)(unsafe.Pointer(&unpackedRes.Image[0])), C.size_t(len(unpackedRes.Image))),
 	}
 
 	job.Output = make(chan string)
@@ -126,35 +141,47 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 				writeError(w, err)
 				return
 			}
+			InitializeModel(&model)
 		}
 
-		modelKeys := make([]string, 0)
-
-		db.View(func(tx *bolt.Tx) error {
-			b := tx.Bucket(MODELS_BUCKET)
-			c := b.Cursor()
-
-			for k, v := c.First(); k != nil; k, v = c.Next() {
-				buf := bytes.NewBuffer(v)
-				dec := gob.NewDecoder(buf)
-				var decModel Model
-				dec.Decode(&decModel)
-				s := fmt.Sprintf("%v|%v|%v|%v|%v", string(k), decModel.WeightsPath,
-					decModel.ModelPath, decModel.LabelsPath, decModel.MeanPath)
-				modelKeys = append(modelKeys, s)
-			}
-
-			return nil
-		})
-
 		resp := RegisterResponse{
-			Success:   true,
-			AllModels: modelKeys,
+			Success: true,
 		}
 
 		writeResp(w, resp, 200)
 		return
 
 	}
+
+}
+
+func ListHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Invalid Method: Only GET requests allowed to this endpoint.", 405)
+	}
+	modelKeys := make([]string, 0)
+
+	db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(MODELS_BUCKET)
+		c := b.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			buf := bytes.NewBuffer(v)
+			dec := gob.NewDecoder(buf)
+			var decModel Model
+			dec.Decode(&decModel)
+			s := fmt.Sprintf("%v|%v|%v|%v|%v", string(k), decModel.WeightsPath,
+				decModel.ModelPath, decModel.LabelsPath, decModel.MeanPath)
+			modelKeys = append(modelKeys, s)
+		}
+		return nil
+	})
+
+	resp := RegisterResponse{
+		Success:   true,
+		AllModels: modelKeys,
+	}
+
+	writeResp(w, resp, 200)
+	return
 
 }

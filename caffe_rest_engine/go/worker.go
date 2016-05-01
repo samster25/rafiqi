@@ -6,12 +6,10 @@ import "C"
 import "unsafe"
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/gob"
 	"fmt"
-	"sync"
-
 	"github.com/boltdb/bolt"
+	"sync"
 )
 
 type LoadedModelsMap struct {
@@ -45,7 +43,7 @@ func NewWorker(id int, workers chan chan []Job) Worker {
 		Quit:        make(chan bool)}
 }
 
-func (w Worker) InitializeModel(m *Model) *ModelEntry {
+func InitializeModel(m *Model) *ModelEntry {
 	var entry *ModelEntry
 	loadedModels.RLock()
 	entry, ok := loadedModels.Models[m.Name]
@@ -102,13 +100,13 @@ func (w Worker) classify(job Job) string {
 	var model Model
 	dec.Decode(&model)
 
-	data, err := base64.StdEncoding.DecodeString(job.Image)
+	//	data, err := base64.StdEncoding.DecodeString(job.Image)
 
 	if err != nil {
 		panic("Failed to b64 decode image: " + err.Error())
 	}
 
-	entry := w.InitializeModel(&model)
+	entry := InitializeModel(&model)
 
 	if entry.Classifier == nil {
 		fmt.Println("fuck me gently with chainsaw")
@@ -116,8 +114,7 @@ func (w Worker) classify(job Job) string {
 	entry.Lock()
 	cstr, err := C.model_classify(
 		entry.Classifier,
-		(*C.char)(unsafe.Pointer(&data[0])),
-		C.size_t(len(data)),
+		job.Image,
 	)
 	entry.Unlock()
 

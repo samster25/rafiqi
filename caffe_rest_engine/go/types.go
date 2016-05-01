@@ -99,26 +99,30 @@ func NewModelFromURL(name string, modelReq ModelRequest) Model {
 		panic("Error creating models file: " + err.Error())
 	}
 
-	DownloadAndWrite(name, name+"_labels",
+	labelsName, err := DownloadAndWrite(name, name+"_labels",
 		modelReq.LabelFile.URL, []byte(modelReq.LabelFile.Blob))
-	DownloadAndWrite(name, name+"_weights", modelReq.WeightsFile.URL, []byte(modelReq.WeightsFile.Blob))
-	DownloadAndWrite(name, name+"_mean", modelReq.MeanFile.URL, []byte(modelReq.MeanFile.Blob))
-	DownloadAndWrite(name, name+"_mod", modelReq.ModFile.URL, []byte(modelReq.ModFile.Blob))
+	weightsName, err := DownloadAndWrite(name, name+"_weights", modelReq.WeightsFile.URL, []byte(modelReq.WeightsFile.Blob))
+	meansName, err := DownloadAndWrite(name, name+"_mean", modelReq.MeanFile.URL, []byte(modelReq.MeanFile.Blob))
+	modelName, err := DownloadAndWrite(name, name+"_mod", modelReq.ModFile.URL, []byte(modelReq.ModFile.Blob))
 
 	return Model{
 		Name:        name,
-		WeightsPath: fmt.Sprintf("../models/%s/%s", name, name+"_weights"),
-		ModelPath:   fmt.Sprintf("../models/%s/%s", name, name+"_mod"),
-		LabelsPath:  fmt.Sprintf("../models/%s/%s", name, name+"_labels"),
-		MeanPath:    fmt.Sprintf("../models/%s/%s", name, name+"_mean"),
+		WeightsPath: weightsName,
+		ModelPath:   modelName,
+		LabelsPath:  labelsName,
+		MeanPath:    meansName,
 	}
 }
 
-func DownloadAndWrite(dirname string, filename string, url string, blob []byte) error {
+func DownloadAndWrite(dirname string, filename string, url string, blob []byte) (string, error) {
+	if url == "" && len(blob) == 0 {
+		return "", nil
+	}
+
 	fname := fmt.Sprintf("../models/%s/%s", dirname, filename)
 	out, err := os.Create(fname)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer out.Close()
 
@@ -127,14 +131,14 @@ func DownloadAndWrite(dirname string, filename string, url string, blob []byte) 
 		// Get the data
 		resp, err := http.Get(url)
 		if err != nil {
-			return err
+			return "", err
 		}
 		defer resp.Body.Close()
 
 		// Writer the body to file
 		_, err = io.Copy(out, resp.Body)
 		if err != nil {
-			return err
+			return "", err
 		}
 	} else {
 		data, err := base64.StdEncoding.DecodeString(string(blob))
@@ -144,5 +148,5 @@ func DownloadAndWrite(dirname string, filename string, url string, blob []byte) 
 		ioutil.WriteFile(fname, data, 0755)
 	}
 
-	return nil
+	return fname, nil
 }

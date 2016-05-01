@@ -13,14 +13,7 @@ def main(model_name, image_path):
     with open(image_path, 'rb') as f:
         img_raw = f.read()
 
-    b64img = base64.b64encode(img_raw)
-
-    req = {
-            'Model': model_name,
-            'Image': str(b64img)
-    }
-
-    print(requests.post(ENDPOINT, json.dumps(req)).text)
+    print(requests.post(ENDPOINT+"?model_name="+model_name, img_raw).text)
 
 
 if __name__ == "__main__":

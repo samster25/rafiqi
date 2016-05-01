@@ -21,7 +21,7 @@ CPP_FILES := $(wildcard ./cpp/*.cpp)
 OBJ_FILES := $(addprefix ./bin/,$(notdir $(CPP_FILES:.cpp=.o)))
 
 bin/%.o: cpp/%.cpp
-	$(CC) $(INCLUDE) -c -fpic -o $@ $<
+	$(CC) $(INCLUDE) -std=c++11 -c -fpic -o $@ $<
 
 compile: $(OBJ_FILES)
 	mkdir -p bin

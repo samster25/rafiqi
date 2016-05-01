@@ -14,7 +14,6 @@ import (
 	"net/http"
 )
 
-var WorkQueue chan Job = make(chan Job)
 var db *bolt.DB
 
 const (
@@ -87,12 +86,10 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job.Output = make(chan string)
-	fmt.Println("\nAdded to work queue.")
-	WorkQueue <- job
+	WorkQueue.AddJob(job)
 
 	select {
 	case classified := <-job.Output:
-		fmt.Println("Request returning.")
 		writeResp(w, classified, 200)
 		return
 	}

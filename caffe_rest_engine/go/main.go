@@ -1,7 +1,6 @@
 package main
 
 // #include <stdlib.h>
-// #include <classification.h>
 import "C"
 
 //import "unsafe"

@@ -26,8 +26,8 @@ var loadedModels LoadedModelsMap
 
 type Worker struct {
 	ID          int
-	WorkQueue   chan Job
-	WorkerQueue chan chan Job
+	WorkQueue   chan []Job
+	WorkerQueue chan chan []Job
 	Quit        chan bool
 }
 
@@ -35,10 +35,10 @@ func handleError(msg string, err error) {
 	panic(msg + err.Error())
 }
 
-func NewWorker(id int, workers chan chan Job) Worker {
+func NewWorker(id int, workers chan chan []Job) Worker {
 	return Worker{
 		ID:          id,
-		WorkQueue:   make(chan Job),
+		WorkQueue:   make(chan []Job),
 		WorkerQueue: workers,
 		Quit:        make(chan bool)}
 }
@@ -89,7 +89,6 @@ func (w Worker) classify(job Job) string {
 		copy(modelGob, v)
 		return nil
 	})
-
 	if err != nil {
 		panic("error in transaction! " + err.Error())
 	}
@@ -100,14 +99,7 @@ func (w Worker) classify(job Job) string {
 	var model Model
 	dec.Decode(&model)
 
-	//	data, err := base64.StdEncoding.DecodeString(job.Image)
-
-	if err != nil {
-		panic("Failed to b64 decode image: " + err.Error())
-	}
-
 	entry := InitializeModel(&model)
-
 	entry.Lock()
 	cstr, err := C.model_classify(
 		entry.Classifier,
@@ -127,13 +119,12 @@ func (w Worker) Start() {
 	go func() {
 		for {
 			w.WorkerQueue <- w.WorkQueue
-
 			select {
-			case currJob := <-w.WorkQueue:
-				fmt.Printf("Job received by a worker (ID: %d)\n", w.ID)
-				res := w.classify(currJob)
-				currJob.Output <- res
-				fmt.Printf("The result of classification: %s\n", res)
+			case currJobs := <-w.WorkQueue:
+				for _, val := range currJobs {
+					val.Output <- w.classify(val)
+				}
+				//fmt.Printf("The result of classification: %s\n", res)
 			case <-w.Quit:
 				fmt.Println("The worker has been signalled to shut down. Ending now.")
 				return

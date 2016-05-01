@@ -81,7 +81,7 @@ std::vector<std::vector<Prediction> > Classifier::Classify(const std::vector<cv:
     if (labels_.empty()) {
       for (int i = 0; i < N; ++i) {
         int idx = maxN[i];
-        predictions.push_back(std::make_pair(std::to_string(i), output[idx]));
+        predictions.push_back(std::make_pair(std::to_string(idx), output[idx]));
       }
     } else {
       for (int i = 0; i < N; ++i) {

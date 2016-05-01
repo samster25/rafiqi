@@ -36,9 +36,9 @@ func (dis Dispatcher) StartDispatcher() {
 				currWorkerQueue := <-dis.WorkersQueue
 				currWorkerQueue <- currJobs
 			}()
-			return
 		}
 	}()
+	return
 }
 
 func (dis Dispatcher) Quit() {

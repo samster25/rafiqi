@@ -76,14 +76,11 @@ func InitializeModel(m *Model) *ModelEntry {
 }
 
 func (w Worker) classify(job Job) string {
-	fmt.Println("Inside of classify")
 	var modelGob []byte
 	err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(MODELS_BUCKET)
-		fmt.Println(job.Model)
 		v := b.Get([]byte(job.Model))
 		if v == nil {
-			fmt.Println("About to fail: ", job.Model)
 			panic("You idiot. You passed in a missing model.")
 		}
 
@@ -102,17 +99,7 @@ func (w Worker) classify(job Job) string {
 	var model Model
 	dec.Decode(&model)
 
-	//	data, err := base64.StdEncoding.DecodeString(job.Image)
-
-	if err != nil {
-		panic("Failed to b64 decode image: " + err.Error())
-	}
-
 	entry := InitializeModel(&model)
-
-	if entry.Classifier == nil {
-		fmt.Println("fuck me gently with chainsaw")
-	}
 	entry.Lock()
 	cstr, err := C.model_classify(
 		entry.Classifier,
@@ -132,10 +119,8 @@ func (w Worker) Start() {
 	go func() {
 		for {
 			w.WorkerQueue <- w.WorkQueue
-
 			select {
 			case currJobs := <-w.WorkQueue:
-				fmt.Printf("Job received by a worker (ID: %d)\n", w.ID)
 				for _, val := range currJobs {
 					val.Output <- w.classify(val)
 				}

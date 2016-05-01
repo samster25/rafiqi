@@ -37,20 +37,15 @@ func NewHashyLinkedList() *HashyLinkedList {
 
 func (h *HashyLinkedList) AddJob(job Job) {
 	h.lock.Lock()
-	defer h.lock.Unlock()
 	newElem := h.queue.PushBack(job)
 	_, ok := h.jobs[job.Model]
 	if !ok {
 		h.jobs[job.Model] = list.New()
 	}
-
 	h.jobs[job.Model].PushBack(newElem)
 	h.condVar.Signal()
-}
-
-func (h *HashyLinkedList) PopAny(batchAmt int) []Job {
-	//el := (h.queue.Front().Value).(Job)
-	return h.PopFront(batchAmt)
+	h.lock.Unlock()
+	return
 }
 
 func (h *HashyLinkedList) PopFront(batchAmt int) []Job {
@@ -85,6 +80,7 @@ func (h *HashyLinkedList) PopFront(batchAmt int) []Job {
 		job := (h.queue.Remove(currQueuePtr)).(Job)
 		result[i] = job
 	}
+
 	return result
 }
 

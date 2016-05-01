@@ -76,12 +76,14 @@ func InitializeModel(m *Model) *ModelEntry {
 }
 
 func (w Worker) classify(job Job) string {
+	fmt.Println("Inside of classify")
 	var modelGob []byte
 	err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(MODELS_BUCKET)
 		fmt.Println(job.Model)
 		v := b.Get([]byte(job.Model))
 		if v == nil {
+			fmt.Println("About to fail: ", job.Model)
 			panic("You idiot. You passed in a missing model.")
 		}
 

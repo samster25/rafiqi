@@ -45,7 +45,6 @@ func (h *HashyLinkedList) AddJob(job Job) {
 	}
 
 	h.jobs[job.Model].PushBack(newElem)
-	fmt.Println("job is added", ((newElem.Value).(Job)).Model)
 	h.condVar.Signal()
 }
 
@@ -60,20 +59,15 @@ func (h *HashyLinkedList) PopFront(batchAmt int) []Job {
 	for h.queue.Len() == 0 {
 		h.condVar.Wait()
 	}
-	result := make([]Job, batchAmt)
 	frontElem := h.queue.Front()
 	if frontElem == nil {
-		fmt.Println("nothing in front")
 		return nil
 	}
 	frontJob := (frontElem.Value).(Job)
-	fmt.Println("in hll", frontJob.Model)
 	jobList, ok := h.jobs[frontJob.Model]
 	if !ok {
-		fmt.Println("Broken")
 		return nil
 	}
-	fmt.Println("the hoblist", h.jobs[frontJob.Model].Len())
 	jobListLen := jobList.Len()
 
 	if jobListLen == 0 {
@@ -84,12 +78,13 @@ func (h *HashyLinkedList) PopFront(batchAmt int) []Job {
 		batchAmt = jobListLen
 	}
 
+	result := make([]Job, batchAmt)
+
 	for i := 0; i < batchAmt; i++ {
 		currQueuePtr := (jobList.Remove(jobList.Front())).(*list.Element)
 		job := (h.queue.Remove(currQueuePtr)).(Job)
 		result[i] = job
 	}
-	fmt.Println("we are hll end", result[0].Model)
 	return result
 }
 

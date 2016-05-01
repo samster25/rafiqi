@@ -86,12 +86,10 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job.Output = make(chan string)
-	fmt.Println("\nAdded to work queue.")
 	WorkQueue.AddJob(job)
 
 	select {
 	case classified := <-job.Output:
-		fmt.Println("Request returning.")
 		writeResp(w, classified, 200)
 		return
 	}

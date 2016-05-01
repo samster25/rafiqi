@@ -79,23 +79,12 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 		Model: r.FormValue("model_name"),
 		Image: image,
 	}
-	//decoder := json.NewDecoder(r.Body)
-	//err := decoder.Decode(&unpackedRes)
 	defer r.Body.Close()
 
-	//data, err := base64.StdEncoding.DecodeString(unpackedRes.Image)
-	//if err != nil {
-	//	fmt.Println("Base64 error " + err.Error())
-	//	return
-	//}
 	job := Job{
 		Model: unpackedRes.Model,
 		Image: C.make_mat((*C.char)(unsafe.Pointer(&unpackedRes.Image[0])), C.size_t(len(unpackedRes.Image))),
 	}
-	//if err != nil {
-	//	http.Error(w, "Invalid JSON "+err.Error(), http.StatusBadRequest)
-	//	return
-	//}
 
 	job.Output = make(chan string)
 	fmt.Println("\nAdded to work queue.")

@@ -43,7 +43,7 @@ func NewWorker(id int, workers chan chan Job) Worker {
 		Quit:        make(chan bool)}
 }
 
-func (w Worker) InitializeModel(m *Model) *ModelEntry {
+func InitializeModel(m *Model) *ModelEntry {
 	var entry *ModelEntry
 	loadedModels.RLock()
 	entry, ok := loadedModels.Models[m.Name]
@@ -106,7 +106,7 @@ func (w Worker) classify(job Job) string {
 		panic("Failed to b64 decode image: " + err.Error())
 	}
 
-	entry := w.InitializeModel(&model)
+	entry := InitializeModel(&model)
 
 	entry.Lock()
 	cstr, err := C.model_classify(

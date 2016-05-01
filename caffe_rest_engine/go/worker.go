@@ -63,6 +63,7 @@ func InitializeModel(m *Model) *ModelEntry {
 		if !ok {
 			start := time.Now()
 			cclass, err := C.model_init(cmodel, cweights, cmean, clabel)
+			fmt.Println("here", m.Name)
 			LogTimef("%v model_init", start, m.Name)
 
 			if err != nil {
@@ -80,7 +81,7 @@ func InitializeModel(m *Model) *ModelEntry {
 }
 
 func (w Worker) classify(job_model string, jobs []Job) []string {
-	Debugf("worker %d beginning classify", w.ID)
+	Debugf(fmt.Sprintf("worker %d beginning classify of %d jobs", w.ID, len(jobs)))
 	var modelGob []byte
 	err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(MODELS_BUCKET)

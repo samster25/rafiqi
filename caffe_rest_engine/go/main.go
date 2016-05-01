@@ -34,13 +34,16 @@ func preload() {
 	err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(MODELS_BUCKET)
 		c := b.Cursor()
+		var model Model
 		for k, v := c.First(); k != nil; k, v = c.Next() {
 			modelGob = make([]byte, len(v))
 			copy(modelGob, v)
 			buf := bytes.NewBuffer(modelGob)
 			dec := gob.NewDecoder(buf)
-			var model Model
-			dec.Decode(&model)
+			err := dec.Decode(&model)
+			if err != nil {
+				continue
+			}
 			InitializeModel(&model)
 		}
 		return nil
@@ -79,7 +82,7 @@ func setupLoggers() {
 
 func Debugf(format string, v ...interface{}) {
 	if debugMode {
-		debugLogger.Printf(format, v)
+		debugLogger.Printf(format, v...)
 	}
 }
 
@@ -103,6 +106,9 @@ func main() {
 			string("verbose logging and times certain operations."))
 	flag.BoolVar(&noPreloadModels, "noPreloadModels", false, "Turn off model preloading.")
 	flag.Parse()
+
+	setupLoggers()
+
 	if noPreloadModels {
 		fmt.Println("Skipping preload...")
 	} else {
@@ -110,8 +116,6 @@ func main() {
 		preload()
 		fmt.Println("Finished prefetching models into CPU Ram")
 	}
-
-	setupLoggers()
 
 	fmt.Println("Starting the dispatcher!")
 	fmt.Println("nworker", *nworkers)

@@ -32,6 +32,7 @@ func (dis Dispatcher) StartDispatcher() {
 	go func() {
 		for {
 			currJobs := WorkQueue.PopFront(MAX_BATCH_AMT)
+			Debugf("Pulled off %d jobs", len(currJobs))
 			go func() {
 				currWorkerQueue := <-dis.WorkersQueue
 				currWorkerQueue <- currJobs

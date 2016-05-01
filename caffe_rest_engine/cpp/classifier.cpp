@@ -17,11 +17,7 @@ Classifier::Classifier(const string& model_file,
                        const string& trained_file,
                        const string& mean_file,
                        const string& label_file) {
-#ifdef CPU_ONLY
-  Caffe::set_mode(Caffe::CPU);
-#else
   Caffe::set_mode(Caffe::GPU);
-#endif
   /* Load the network. */
   net_.reset(new Net<float>(model_file, TEST));
   net_->CopyTrainedLayersFrom(trained_file);
@@ -36,18 +32,24 @@ Classifier::Classifier(const string& model_file,
   input_geometry_ = cv::Size(input_layer->width(), input_layer->height());
 
   /* Load the binaryproto mean file. */
-  SetMean(mean_file);
-
-  /* Load labels. */
-  std::ifstream labels(label_file.c_str());
-  CHECK(labels) << "Unable to open labels file " << label_file;
-  string line;
-  while (std::getline(labels, line))
-    labels_.push_back(string(line));
-
+  if (!mean_file.empty()) {
+    SetMean(mean_file);
+  }
   Blob<float>* output_layer = net_->output_blobs()[0];
-  CHECK_EQ(labels_.size(), output_layer->channels())
-    << "Number of labels is different from the output layer dimension.";
+  output_N_ = output_layer->channels();
+  /* Load labels. */
+  if (!label_file.empty()) {
+    std::ifstream labels(label_file.c_str());
+    CHECK(labels) << "Unable to open labels file " << label_file;
+    string line;
+    while (std::getline(labels, line))
+      labels_.push_back(string(line));
+
+    Blob<float>* output_layer = net_->output_blobs()[0];
+    CHECK_EQ(labels_.size(), output_N_)
+      << "Number of labels is different from the output layer dimension.";
+  }
+  
 }
 
 static bool PairCompare(const std::pair<float, int>& lhs,
@@ -71,14 +73,21 @@ static std::vector<int> Argmax(const std::vector<float>& v, int N) {
 std::vector<std::vector<Prediction> > Classifier::Classify(const std::vector<cv::Mat*>& imgs, int N) {
   std::vector<std::vector<float> >  outputs = Predict(imgs);
   std::vector<std::vector<Prediction> > all_predictions;
-  N = std::min<int>(labels_.size(), N);
+  N = std::min<int>(output_N_, N);
   for (int j = 0; j < outputs.size(); ++j) {
     std::vector<float> output = outputs[j];
     std::vector<int> maxN = Argmax(output, N);
     std::vector<Prediction> predictions;
-    for (int i = 0; i < N; ++i) {
-      int idx = maxN[i];
-      predictions.push_back(std::make_pair(labels_[idx], output[idx]));
+    if (labels_.empty()) {
+      for (int i = 0; i < N; ++i) {
+        int idx = maxN[i];
+        predictions.push_back(std::make_pair(std::to_string(i), output[idx]));
+      }
+    } else {
+      for (int i = 0; i < N; ++i) {
+        int idx = maxN[i];
+        predictions.push_back(std::make_pair(labels_[idx], output[idx]));
+      }
     }
     all_predictions.push_back(predictions);
   }
@@ -125,7 +134,6 @@ std::vector<std::vector<float> > Classifier::Predict(const std::vector<cv::Mat*>
     std::vector<cv::Mat> input_channels;
     WrapInputLayer(&input_channels, i);
     Preprocess(*imgs[i], &input_channels);
-
   }
   net_->Forward();
   std::vector<std::vector<float> > outputs;
@@ -182,13 +190,18 @@ void Classifier::Preprocess(const cv::Mat& img,
     sample_resized.convertTo(sample_float, CV_32FC3);
   else
     sample_resized.convertTo(sample_float, CV_32FC1);
-
-  cv::Mat sample_normalized;
-  cv::subtract(sample_float, mean_, sample_normalized);
-
+  
   /* This operation will write the separate BGR planes directly to the
    * input layer of the network because it is wrapped by the cv::Mat
    * objects in input_channels. */
-  cv::split(sample_normalized, *input_channels);
+
+  if (mean_.empty()) {
+    cv::split(sample_float, *input_channels);
+  } else {
+    cv::Mat sample_normalized;
+    cv::subtract(sample_float, mean_, sample_normalized);
+    cv::split(sample_normalized, *input_channels);
+  }
+
 }
 

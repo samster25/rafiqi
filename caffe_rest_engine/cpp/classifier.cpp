@@ -8,10 +8,14 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <opencv2/cudaarithm.hpp>
+#include <opencv2/cudaimgproc.hpp>
+#include <opencv2/cudawarping.hpp>
 #include "classifier.h"
 
 using namespace caffe;  // NOLINT(build/namespaces)
 using std::string;
+using GpuMat = cv::cuda::GpuMat;
 
 Classifier::Classifier(const string& model_file,
                        const string& trained_file,
@@ -70,7 +74,7 @@ static std::vector<int> Argmax(const std::vector<float>& v, int N) {
   return result;
 }
 
-std::vector<std::vector<Prediction> > Classifier::Classify(const std::vector<cv::Mat*>& imgs, int N) {
+std::vector<std::vector<Prediction> > Classifier::Classify(const std::vector<GpuMat*>& imgs, int N) {
   std::vector<std::vector<float> >  outputs = Predict(imgs);
   std::vector<std::vector<Prediction> > all_predictions;
   N = std::min<int>(output_N_, N);
@@ -122,7 +126,8 @@ void Classifier::SetMean(const string& mean_file) {
   /* Compute the global mean pixel value and create a mean image
    * filled with this value. */
   cv::Scalar channel_mean = cv::mean(mean);
-  mean_ = cv::Mat(input_geometry_, mean.type(), channel_mean);
+  cv::Mat host_mean = cv::Mat(input_geometry_, mean.type(), channel_mean);
+  mean_.upload(host_mean);
 }
 
 std::vector<std::vector<float> > Classifier::Predict(const std::vector<cv::Mat*>& imgs) {
@@ -132,7 +137,7 @@ std::vector<std::vector<float> > Classifier::Predict(const std::vector<cv::Mat*>
   net_->Reshape();
   for (int i = 0; i < imgs.size(); i++) {
     std::vector<cv::Mat> input_channels;
-    WrapInputLayer(&input_channels, i);
+    //WrapInputLayer(&input_channels, i);
     Preprocess(*imgs[i], &input_channels);
   }
   net_->Forward();
@@ -145,20 +150,44 @@ std::vector<std::vector<float> > Classifier::Predict(const std::vector<cv::Mat*>
   }
   return outputs;
 }
+
+
+std::vector<std::vector<float> > Classifier::Predict(const std::vector<GpuMat*>& imgs) {
+  Blob<float>* input_layer = net_->input_blobs()[0];
+  input_layer->Reshape(imgs.size(), num_channels_,
+                       input_geometry_.height, input_geometry_.width);
+  net_->Reshape();
+  for (int i = 0; i < imgs.size(); i++) {
+    std::vector<GpuMat> input_channels;
+    WrapInputLayer(&input_channels, i);
+    cv::cuda::split(*imgs[i], input_channels);
+  }
+  net_->Forward();
+  std::vector<std::vector<float> > outputs;
+  Blob<float>* output_layer = net_->output_blobs()[0];
+  for (int i = 0; i < output_layer->num(); ++i) {
+    const float* begin = output_layer->cpu_data() + i * output_layer->channels();
+    const float* end = begin + output_layer->channels();
+    outputs.push_back(std::vector<float>(begin, end));
+  }
+  return outputs;
+}
+
+
 /* Wrap the input layer of the network in separate cv::Mat objects
  * (one per channel). This way we save one memcpy operation and we
  * don't need to rely on cudaMemcpy2D. The last preprocessing
  * operation will write the separate channels directly to the input
  * layer. */
 
-void Classifier::WrapInputLayer(std::vector<cv::Mat>* input_channels, int n) {
+void Classifier::WrapInputLayer(std::vector<GpuMat>* input_channels, int n) {
   Blob<float>* input_layer = net_->input_blobs()[0];
   int width = input_layer->width();
   int height = input_layer->height();
   int channels = input_layer->channels();
-  float* input_data = input_layer->mutable_cpu_data() + n * width * height * channels;
+  float* input_data = input_layer->mutable_gpu_data() + n * width * height * channels;
   for (int i = 0; i < channels; ++i) {
-    cv::Mat channel(height, width, CV_32FC1, input_data);
+    GpuMat channel(height, width, CV_32FC1, input_data);
     input_channels->push_back(channel);
     input_data += width * height;
   }
@@ -202,6 +231,49 @@ void Classifier::Preprocess(const cv::Mat& img,
     cv::subtract(sample_float, mean_, sample_normalized);
     cv::split(sample_normalized, *input_channels);
   }
+}
 
+
+struct img_processor *Classifier::Preprocess(void *data, size_t n) {
+  /* Convert the input image to the input image format of the network. */
+  struct img_processor *rtn = new img_processor;  
+  cv::_InputArray array(data, n);
+  rtn->input = imdecode(array, -1);
+  if (rtn->input.empty()) {
+    delete rtn;
+    return NULL;
+  }
+  rtn->img.upload(rtn->input);  
+  if (rtn->img.channels() == 3 && num_channels_ == 1)
+    cv::cuda::cvtColor(rtn->img, rtn->sample, cv::COLOR_BGR2GRAY);
+  else if (rtn->img.channels() == 4 && num_channels_ == 1)
+    cv::cuda::cvtColor(rtn->img, rtn->sample, cv::COLOR_BGRA2GRAY);
+  else if (rtn->img.channels() == 4 && num_channels_ == 3)
+    cv::cuda::cvtColor(rtn->img, rtn->sample, cv::COLOR_BGRA2BGR);
+  else if (rtn->img.channels() == 1 && num_channels_ == 3)
+    cv::cuda::cvtColor(rtn->img, rtn->sample, cv::COLOR_GRAY2BGR);
+  else
+    rtn->sample = rtn->img;
+
+  if (rtn->sample.size() != input_geometry_)
+    cv::cuda::resize(rtn->sample, rtn->sample_resized, input_geometry_);
+  else
+    rtn->sample_resized = rtn->sample;
+
+  if (num_channels_ == 3)
+    rtn->sample_resized.convertTo(rtn->sample_float, CV_32FC3);
+  else
+    rtn->sample_resized.convertTo(rtn->sample_float, CV_32FC1);
+  
+  /* This operation will write the separate BGR planes directly to the
+   * input layer of the network because it is wrapped by the cv::Mat
+   * objects in input_channels. */
+
+  if (mean_.empty()) {
+    rtn->sample_normalized = rtn->sample_float;
+  } else {
+    cv::cuda::subtract(rtn->sample_float, mean_, rtn->sample_normalized);
+  }
+  return rtn;
 }
 

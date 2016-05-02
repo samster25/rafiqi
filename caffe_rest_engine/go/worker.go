@@ -131,20 +131,23 @@ func (w Worker) Start() {
 	go func() {
 		for {
 			w.WorkerQueue <- w.WorkQueue
+            var jobs []Job
 			select {
 			case currJobs := <-w.WorkQueue:
-				res := w.classify(currJobs[0].Model, currJobs)
-				//if len(res) == 0 {
+			    jobs = currJobs	
+                //if len(res) == 0 {
 				//	res = "Error in classify. see error log for details."
 				//}
-				for i := range res {
-					currJobs[i].Output <- res[i]
-				}
 				//fmt.Printf("The result of classification: %s\n", res)
 			case <-w.Quit:
 				fmt.Println("The worker has been signalled to shut down. Ending now.")
 				return
 			}
+		    res := w.classify(jobs[0].Model, jobs)
+            for i := range res {
+                jobs[i].Output <- res[i]
+            }
+
 		}
 	}()
 }

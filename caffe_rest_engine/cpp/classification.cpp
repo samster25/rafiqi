@@ -23,13 +23,10 @@ c_model model_init(char* model_file, char* trained_file, char* mean_file, char* 
                                  string(mean_file), string(label_file)));
 }
 
-c_mat make_mat(char *buffer, size_t length) {
-  cv::_InputArray array(buffer, length);
-  cv::Mat img = imdecode(array, -1);
-  if (img.empty()) {
-    return NULL;
-  }
-  return reinterpret_cast<c_mat>(new cv::Mat(img)); 
+c_mat make_mat(c_model model, char *buffer, size_t length) {
+  Classifier *classifier = reinterpret_cast<Classifier*>(model);
+  struct img_processor *ip = classifier->Classifier::Preprocess(buffer, length);
+  return reinterpret_cast<c_mat>(ip); 
 }
 
 void model_destroy(c_model model) {
@@ -51,8 +48,11 @@ const char** model_classify_batch(c_model model, c_mat* c_imgs, int num)
     const char **rtn = (const char **) malloc(num*sizeof(char*)); 
     std::vector<std::vector<Prediction> > all_predictions;
     Classifier *classifier = reinterpret_cast<Classifier*>(model);
-    cv::Mat **imgs_ptr = reinterpret_cast<cv::Mat**>(c_imgs);
-    std::vector<cv::Mat*> imgs(imgs_ptr, imgs_ptr + num); 
+    struct img_processor **imgs_ptr = reinterpret_cast<struct img_processor**>(c_imgs);
+    std::vector<GpuMat*> imgs;
+    for (int i = 0; i < num; i++ ) {
+        imgs.push_back(&imgs_ptr[i]->sample_normalized);
+    }
     all_predictions = classifier->Classify(imgs);
 
     /* Write the top N predictions in JSON format. */
@@ -73,7 +73,7 @@ const char** model_classify_batch(c_model model, c_mat* c_imgs, int num)
       errno = 0;
       std::string str = os.str();
       rtn[j] = strdup(str.c_str());
-      delete imgs[j];  
+      delete imgs_ptr[j];  
     }
       return rtn;
   }

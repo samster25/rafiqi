@@ -79,12 +79,12 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 		Image: image,
 	}
 	defer r.Body.Close()
-
+    loadedModels.RLock()
 	job := Job{
 		Model: unpackedRes.Model,
-		Image: C.make_mat((*C.char)(unsafe.Pointer(&unpackedRes.Image[0])), C.size_t(len(unpackedRes.Image))),
+		Image: C.make_mat(loadedModels.Models[unpackedRes.Model].Classifier, (*C.char)(unsafe.Pointer(&unpackedRes.Image[0])), C.size_t(len(unpackedRes.Image))),
 	}
-
+    loadedModels.RUnlock()
 	job.Output = make(chan string)
 	WorkQueue.AddJob(job)
 

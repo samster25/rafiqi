@@ -10,6 +10,7 @@ INCLUDE = -I$(CAFFE)/include \
 
 LIBRARY =           -L$(shell pwd)/bin -lclass \
                     -L$(OPENCV)/lib -lopencv_core -lopencv_imgproc -lopencv_imgcodecs \
+                    -lopencv_cudaarithm -lopencv_cudaimgproc -lopencv_cudawarping \
                     -L/usr/local/x86_64-linux-gnu/ -lprotobuf \
                     -L/usr/lib/x86_64-linux-gnu/ -lglog -lboost_system -lboost_thread \
                     -L/usr/local/cuda/lib64/ -lcudart -lcublas -lcurand \
@@ -21,7 +22,7 @@ CPP_FILES := $(wildcard ./cpp/*.cpp)
 OBJ_FILES := $(addprefix ./bin/,$(notdir $(CPP_FILES:.cpp=.o)))
 
 bin/%.o: cpp/%.cpp
-	$(CC) $(INCLUDE) -std=c++11 -c -fpic -o $@ $<
+	$(CC) $(INCLUDE) -O3 -std=c++11 -c -fpic -o $@ $<
 
 compile: $(OBJ_FILES)
 	mkdir -p bin

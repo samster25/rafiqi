@@ -10,7 +10,7 @@
 #include <vector>
 #include "classifier.h"
 #include "classification.h"
-#include <cuda_profiler_api.h>
+
 using namespace caffe;  // NOLINT(build/namespaces)
 using std::string;
 
@@ -25,7 +25,7 @@ int main(int argc, char** argv) {
               << " mean.binaryproto labels.txt img.jpg" << std::endl;
     return 1;
   }
-  cudaProfilerStop();
+  
   classifier_init();
   char *model_file   = argv[1];
   char *trained_file = argv[2];
@@ -47,22 +47,12 @@ int main(int argc, char** argv) {
   std::cout << "before read" << file << "\n";
   file.read(buffer.data(),size);
   std::cout << "before classify\n";
-  c_mat im = make_mat(model, buffer.data(), size);
-  const char *out = model_classify(model, im);
-  std::cout << -1 << out << std::endl;
-  free((void *) out);
-  
-  cudaProfilerStart();
-  for (int i =0; i < 200; i++) {
-    char *ptr =(char*) malloc(size);
-    memcpy(ptr,buffer.data(),size);
-    im = make_mat(model, ptr, size);
-    out = model_classify(model, im);
+  for (int i =0; i < 20; i++) {
+    c_mat im = make_mat(model, buffer.data(), size);
+    const char *out = model_classify(model, im);
     std::cout << i << out << std::endl;
     free((void *) out);
   }
-  cudaProfilerStop();
-
   model_destroy(model);
   /* Print the top N predictions. */
 }

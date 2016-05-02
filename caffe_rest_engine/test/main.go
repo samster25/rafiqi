@@ -3,7 +3,6 @@ package main
 // #include "classification.h"
 import "C"
 import "unsafe"
-
 import (
 	"io"
 	"io/ioutil"
@@ -50,7 +49,6 @@ func main() {
 		return
 	}
 	defer C.model_destroy(model)
-
 	log.Println("Adding REST endpoint /api/classify")
 	http.HandleFunc("/api/classify", classify)
 	log.Println("Starting server listening on :8000")

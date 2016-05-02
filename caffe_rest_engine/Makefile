@@ -33,8 +33,11 @@ all: compile server
 clean:
 	rm -rf ./bin/*  
 cpp_test_compile:
-	$(CC) $(INCLUDE) -I$(shell pwd)/cpp -O3 -std=c++11 cpp/*.cpp test/*.cpp -o bin/cpp_test $(LIBRARY)
+	$(CC) $(INCLUDE) -I$(shell pwd)/cpp -std=c++11 test/*.cpp -o bin/cpp_test  -L$(shell pwd)/bin -lclass  $(LIBRARY) 
 shit_server:
-	CGO_LDFLAGS='-L$(shell pwd)/bin -lclass $(LIBRARY)' CGO_CFLAGS='-I$(shell pwd)/cpp' go build -o bin/shit_server_exec \
+	CGO_LDFLAGS='-L$(shell pwd)/bin -lclass $(LIBRARY)' CGO_CFLAGS='-I$(shell pwd)/cpp' go build -a -ldflags "-s" -o bin/shit_server_exec \
     test/main.go
+shit_test:
+	CGO_LDFLAGS='-L$(shell pwd)/bin -lclass $(LIBRARY)' CGO_CFLAGS='-I$(shell pwd)/cpp' go build -a -ldflags "-s" -o bin/shit_loop \
+    test/main_loop.go
 

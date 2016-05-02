@@ -8,9 +8,10 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <sys/time.h>
 #include "classifier.h"
 #include "classification.h"
-
+#include <cuda_profiler_api.h>
 using namespace caffe;  // NOLINT(build/namespaces)
 using std::string;
 
@@ -40,6 +41,13 @@ const char *model_classify(c_model model, c_mat c_img) {
   free(out); 
   return rtn;
 }
+long timevaldiff(struct timeval *starttime, struct timeval *finishtime)
+{
+      long msec;
+      msec=(finishtime->tv_sec-starttime->tv_sec)*1000;
+      msec+=(finishtime->tv_usec-starttime->tv_usec)/1000;
+      return msec;
+}
 
 const char** model_classify_batch(c_model model, c_mat* c_imgs, int num)
 {
@@ -53,8 +61,11 @@ const char** model_classify_batch(c_model model, c_mat* c_imgs, int num)
     for (int i = 0; i < num; i++ ) {
         imgs.push_back(&imgs_ptr[i]->sample_normalized);
     }
+    struct timeval start, end;
+    gettimeofday(&start, NULL);
     all_predictions = classifier->Classify(imgs);
-
+    gettimeofday(&end, NULL);
+    std::cout << "classify ms: " << timevaldiff(&start, &end) << std::endl; 
     /* Write the top N predictions in JSON format. */
     for (int j=0; j < num; j++) {
       std::vector<Prediction> predictions = all_predictions[j];
@@ -75,7 +86,7 @@ const char** model_classify_batch(c_model model, c_mat* c_imgs, int num)
       rtn[j] = strdup(str.c_str());
       delete imgs_ptr[j];  
     }
-      return rtn;
+    return rtn;
   }
   catch (const std::invalid_argument&)
   {

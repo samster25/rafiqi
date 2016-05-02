@@ -13,6 +13,8 @@
 #include <opencv2/cudawarping.hpp>
 #include "classifier.h"
 
+#define BATCH_NUM 128
+
 using namespace caffe;  // NOLINT(build/namespaces)
 using std::string;
 using GpuMat = cv::cuda::GpuMat;
@@ -21,7 +23,9 @@ Classifier::Classifier(const string& model_file,
                        const string& trained_file,
                        const string& mean_file,
                        const string& label_file) {
+  
   Caffe::set_mode(Caffe::GPU);
+  Caffe::SetDevice(0);  
   /* Load the network. */
   net_.reset(new Net<float>(model_file, TEST));
   net_->CopyTrainedLayersFrom(trained_file);
@@ -53,6 +57,10 @@ Classifier::Classifier(const string& model_file,
     CHECK_EQ(labels_.size(), output_N_)
       << "Number of labels is different from the output layer dimension.";
   }
+  input_layer->Reshape(128, num_channels_,
+                       input_geometry_.height, input_geometry_.width);
+
+  net_->Reshape();
   
 }
 
@@ -151,18 +159,39 @@ std::vector<std::vector<float> > Classifier::Predict(const std::vector<cv::Mat*>
   return outputs;
 }
 
+long timeval_diff(struct timeval *starttime, struct timeval *finishtime)
+{
+      long msec;
+      msec=(finishtime->tv_sec-starttime->tv_sec)*1000;
+      msec+=(finishtime->tv_usec-starttime->tv_usec)/1000;
+      return msec;
+}
 
 std::vector<std::vector<float> > Classifier::Predict(const std::vector<GpuMat*>& imgs) {
   Blob<float>* input_layer = net_->input_blobs()[0];
+  struct timeval start,end;
+  gettimeofday(&start, NULL);
   input_layer->Reshape(imgs.size(), num_channels_,
                        input_geometry_.height, input_geometry_.width);
   net_->Reshape();
+  gettimeofday(&end, NULL);
+  std::cout << " reshape time: " << timeval_diff(&start, &end) << std::endl;
+  gettimeofday(&start, NULL);
+  
   for (int i = 0; i < imgs.size(); i++) {
     std::vector<GpuMat> input_channels;
     WrapInputLayer(&input_channels, i);
     cv::cuda::split(*imgs[i], input_channels);
   }
-  net_->Forward();
+  gettimeofday(&end, NULL);
+  std::cout << " wrapping time: " << timeval_diff(&start, &end) << std::endl;
+  
+  gettimeofday(&start, NULL);
+  net_->Forward(NULL);
+  gettimeofday(&end, NULL);
+  std::cout << " forward time: " << timeval_diff(&start, &end) << std::endl;
+  gettimeofday(&start, NULL);
+  
   std::vector<std::vector<float> > outputs;
   Blob<float>* output_layer = net_->output_blobs()[0];
   for (int i = 0; i < output_layer->num(); ++i) {
@@ -170,6 +199,9 @@ std::vector<std::vector<float> > Classifier::Predict(const std::vector<GpuMat*>&
     const float* end = begin + output_layer->channels();
     outputs.push_back(std::vector<float>(begin, end));
   }
+  gettimeofday(&end, NULL);
+  std::cout << " copy_back time: " << timeval_diff(&start, &end) << std::endl;
+
   return outputs;
 }
 
@@ -243,7 +275,10 @@ struct img_processor *Classifier::Preprocess(void *data, size_t n) {
     delete rtn;
     return NULL;
   }
-  rtn->img.upload(rtn->input);  
+  cv::cuda::registerPageLocked(rtn->input);
+  rtn->img.upload(rtn->input);
+  cv::cuda::unregisterPageLocked(rtn->input);
+
   if (rtn->img.channels() == 3 && num_channels_ == 1)
     cv::cuda::cvtColor(rtn->img, rtn->sample, cv::COLOR_BGR2GRAY);
   else if (rtn->img.channels() == 4 && num_channels_ == 1)

@@ -12,6 +12,7 @@ import (
 	"github.com/boltdb/bolt"
 	"io/ioutil"
 	"net/http"
+	"time"
 )
 
 var db *bolt.DB
@@ -66,6 +67,8 @@ func writeError(w http.ResponseWriter, err error) {
 }
 
 func JobHandler(w http.ResponseWriter, r *http.Request) {
+	Debugf("Request beginning")
+	start := time.Now()
 	if r.Method != "POST" {
 		http.Error(w, "Invalid method - only POST requests are valid for this endpoint.", 405)
 	}
@@ -91,6 +94,7 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 	select {
 	case classified := <-job.Output:
 		writeResp(w, classified, 200)
+		LogTimef("Request returning success", start)
 		return
 	}
 

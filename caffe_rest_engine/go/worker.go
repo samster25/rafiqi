@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"github.com/boltdb/bolt"
 	"sync"
+	"time"
 )
 
 type LoadedModelsMap struct {
@@ -60,7 +61,10 @@ func InitializeModel(m *Model) *ModelEntry {
 		// Ensure no one added this model between the RUnlock and here
 		_, ok = loadedModels.Models[m.Name]
 		if !ok {
+			start := time.Now()
 			cclass, err := C.model_init(cmodel, cweights, cmean, clabel)
+			fmt.Println("here", m.Name)
+			LogTimef("%v model_init", start, m.Name)
 
 			if err != nil {
 				handleError("init failed: ", err)
@@ -77,6 +81,7 @@ func InitializeModel(m *Model) *ModelEntry {
 }
 
 func (w Worker) classify(job_model string, jobs []Job) []string {
+	Debugf(fmt.Sprintf("worker %d beginning classify of %d jobs", w.ID, len(jobs)))
 	var modelGob []byte
 	err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(MODELS_BUCKET)
@@ -104,6 +109,7 @@ func (w Worker) classify(job_model string, jobs []Job) []string {
 
 	entry := InitializeModel(&model)
 	entry.Lock()
+	start := time.Now()
 	batch_mats := make([]C.c_mat, len(jobs))
 	for i, job := range jobs {
 		batch_mats[i] = job.Image
@@ -113,6 +119,7 @@ func (w Worker) classify(job_model string, jobs []Job) []string {
 		(*C.c_mat)(unsafe.Pointer(&batch_mats[0])),
 		C.int(len(batch_mats)),
 	)
+	LogTimef("%v model_classify", start, jobs[0].Model)
 	entry.Unlock()
 	//byte_convert := [][]byte(cstr_arr)
 	if err != nil {

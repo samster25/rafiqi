@@ -14,6 +14,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 )
 
 var (
@@ -24,6 +25,8 @@ var (
 
 	debugLogger *log.Logger
 	errorLogger *log.Logger
+
+	logFlags = log.Lshortfile | log.Ltime | log.Lmicroseconds
 )
 
 func preload() {
@@ -31,13 +34,16 @@ func preload() {
 	err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(MODELS_BUCKET)
 		c := b.Cursor()
+		var model Model
 		for k, v := c.First(); k != nil; k, v = c.Next() {
 			modelGob = make([]byte, len(v))
 			copy(modelGob, v)
 			buf := bytes.NewBuffer(modelGob)
 			dec := gob.NewDecoder(buf)
-			var model Model
-			dec.Decode(&model)
+			err := dec.Decode(&model)
+			if err != nil {
+				continue
+			}
 			InitializeModel(&model)
 		}
 		return nil
@@ -58,7 +64,7 @@ func setupLoggers() {
 			panic("Failed to open debug log: " + err.Error())
 		}
 	}
-	debugLogger = log.New(debugFile, "DEBUG: ", log.Lshortfile|log.LstdFlags)
+	debugLogger = log.New(debugFile, "DEBUG: ", logFlags)
 
 	var errorFile io.Writer
 	if errorLog == "" {
@@ -70,14 +76,19 @@ func setupLoggers() {
 		}
 	}
 
-	errorLogger = log.New(errorFile, "Error: ", log.LstdFlags|log.Lshortfile)
+	errorLogger = log.New(errorFile, "Error: ", logFlags)
 
 }
 
 func Debugf(format string, v ...interface{}) {
 	if debugMode {
-		debugLogger.Printf(format, v)
+		debugLogger.Printf(format, v...)
 	}
+}
+
+func LogTimef(operation string, start time.Time, v ...interface{}) {
+	duration := (time.Now().UnixNano() - start.UnixNano()) / 1000000
+	Debugf(fmt.Sprintf("%v took %vs (%vms)", operation, float64(duration)/1000.0, duration), v...)
 }
 
 func main() {
@@ -95,6 +106,9 @@ func main() {
 			string("verbose logging and times certain operations."))
 	flag.BoolVar(&noPreloadModels, "noPreloadModels", false, "Turn off model preloading.")
 	flag.Parse()
+
+	setupLoggers()
+
 	if noPreloadModels {
 		fmt.Println("Skipping preload...")
 	} else {
@@ -102,8 +116,6 @@ func main() {
 		preload()
 		fmt.Println("Finished prefetching models into CPU Ram")
 	}
-
-	setupLoggers()
 
 	fmt.Println("Starting the dispatcher!")
 	fmt.Println("nworker", *nworkers)

@@ -8,8 +8,7 @@ INCLUDE = -I$(CAFFE)/include \
                     -I/usr/local/cuda/include \
                     -I$(OPENCV)/include
 
-LIBRARY =           -L$(shell pwd)/bin -lclass \
-                    -L$(OPENCV)/lib -lopencv_core -lopencv_imgproc -lopencv_imgcodecs \
+LIBRARY =           -L$(OPENCV)/lib -lopencv_core -lopencv_imgproc -lopencv_imgcodecs \
                     -lopencv_cudaarithm -lopencv_cudaimgproc -lopencv_cudawarping \
                     -L/usr/local/x86_64-linux-gnu/ -lprotobuf \
                     -L/usr/lib/x86_64-linux-gnu/ -lglog -lboost_system -lboost_thread \
@@ -29,7 +28,13 @@ compile: $(OBJ_FILES)
 	$(CC) -shared -o ./bin/libclass.so $(OBJ_FILES) 
 	rm ./bin/*.o
 server:
-	CGO_LDFLAGS='$(LIBRARY)' CGO_CFLAGS='-I$(shell pwd)/cpp' go build -o bin/server_exec go/*.go
+	CGO_LDFLAGS='-L$(shell pwd)/bin -lclass $(LIBRARY)' CGO_CFLAGS='-I$(shell pwd)/cpp' go build -o bin/server_exec go/*.go
 all: compile server
 clean:
 	rm -rf ./bin/*  
+cpp_test_compile:
+	$(CC) $(INCLUDE) -I$(shell pwd)/cpp -O3 -std=c++11 cpp/*.cpp test/*.cpp -o bin/cpp_test $(LIBRARY)
+shit_server:
+	CGO_LDFLAGS='-L$(shell pwd)/bin -lclass $(LIBRARY)' CGO_CFLAGS='-I$(shell pwd)/cpp' go build -o bin/shit_server_exec \
+    test/main.go
+

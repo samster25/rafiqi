@@ -1,4 +1,5 @@
 import re
+import sys
 
 def get_entries(regex, debug_file="../logs/debug.log"):
     results = []
@@ -14,6 +15,10 @@ def get_request_times(debug_file="../logs/debug.log"):
     entries = get_entries(reg, debug_file)
     return map(lambda i: int(i[0]), entries)
 
+def get_classify_times(debug_file):
+    reg = r'classify ms.*?([0-9]+)'
+    entries = get_entries(reg, debug_file)
+    return map(lambda i: int(i[0]), entries)
 
 if __name__ == "__main__":
-    print get_request_times()
+    print get_classify_times(sys.argv[1])

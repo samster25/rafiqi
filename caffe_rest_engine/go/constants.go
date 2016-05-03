@@ -1,5 +1,5 @@
 package main
 
 const (
-	MAX_BATCH_AMT = 32
+	MAX_BATCH_AMT = 1
 )

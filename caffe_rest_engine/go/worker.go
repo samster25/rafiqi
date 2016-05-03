@@ -110,14 +110,13 @@ func (w Worker) classify(job_model string, jobs []Job) []string {
 	entry := InitializeModel(&model)
 	entry.Lock()
 	start := time.Now()
-	batch_mats := make([]C.c_mat, len(jobs))
-	for i, job := range jobs {
-		batch_mats[i] = job.Image
-	}
-	cstr_arr, err := C.model_classify_batch(
-		entry.Classifier,
-		(*C.c_mat)(unsafe.Pointer(&batch_mats[0])),
-		C.int(len(batch_mats)),
+	//batch_mats := make([]C.c_mat, len(jobs))
+	//for i, job := range jobs {
+	//	batch_mats[i] = job.Image
+	//}
+	cstr_arr, err := C.model_classify(
+		(*C.c_mat)(unsafe.Pointer(&jobs[0].Image[0])),
+		C.int(len(jobs[0].Image)),
 	)
 	LogTimef("%v model_classify", start, jobs[0].Model)
 	entry.Unlock()
@@ -138,11 +137,11 @@ func (w Worker) Start() {
 	go func() {
 		for {
 			w.WorkerQueue <- w.WorkQueue
-            var jobs []Job
+			var jobs []Job
 			select {
 			case currJobs := <-w.WorkQueue:
-			    jobs = currJobs	
-                //if len(res) == 0 {
+				jobs = currJobs
+				//if len(res) == 0 {
 				//	res = "Error in classify. see error log for details."
 				//}
 				//fmt.Printf("The result of classification: %s\n", res)
@@ -150,10 +149,10 @@ func (w Worker) Start() {
 				fmt.Println("The worker has been signalled to shut down. Ending now.")
 				return
 			}
-		    res := w.classify(jobs[0].Model, jobs)
-            for i := range res {
-                jobs[i].Output <- res[i]
-            }
+			res := w.classify(jobs[0].Model, jobs)
+			for i := range res {
+				jobs[i].Output <- res[i]
+			}
 
 		}
 	}()

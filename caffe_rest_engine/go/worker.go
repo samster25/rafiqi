@@ -115,6 +115,7 @@ func (w Worker) classify(job_model string, jobs []Job) []string {
 	//	batch_mats[i] = job.Image
 	//}
 	cstr_arr, err := C.model_classify(
+		entry.Classifer,
 		(*C.char)(unsafe.Pointer(&jobs[0].Image[0])),
 		C.int(len(jobs[0].Image)),
 	)

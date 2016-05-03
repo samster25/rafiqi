@@ -1,20 +1,26 @@
-#ifndef __CLASSIFICATION_H__
-#define __CLASSIFICATION_H__
+#ifndef CLASSIFICATION_H
+#define CLASSIFICATION_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-  typedef void * c_model;
-  typedef void * c_mat;
 
-  void classifier_init();
-  c_model model_init(char*, char*, char*, char*);
-  c_mat make_mat(c_model, char *, size_t);
-  const char* model_classify(c_model model, c_mat c_img);
-  const char** model_classify_batch(c_model model, c_mat* c_imgs, int num);
-  void model_destroy(c_model);
+#include <stddef.h>
+
+typedef struct classifier_ctx classifier_ctx;
+typedef classifier_ctx* c_model;
+
+void classifier_init();
+c_model model_init(char* model_file, char* trained_file,
+                                      char* mean_file, char* label_file);
+
+const char* model_classify(c_model model,
+                                char* buffer, size_t length);
+
+void model_destroy(c_model model);
+
 #ifdef __cplusplus
 }
 #endif
 
-#endif
+#endif // CLASSIFICATION_H

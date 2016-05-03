@@ -1,6 +1,6 @@
 CC=g++
 
-CAFFE = /scratch/sammy/caffe
+CAFFE = /scratch/sammy/concur_caffe
 OPENCV = /scratch/sammy/opencv
 INCLUDE = -I$(CAFFE)/include \
                     -I$(CAFFE)/src \
@@ -12,11 +12,13 @@ LIBRARY =           -L$(OPENCV)/lib -lopencv_core -lopencv_imgproc -lopencv_imgc
                     -lopencv_cudaarithm -lopencv_cudaimgproc -lopencv_cudawarping \
                     -L/usr/local/x86_64-linux-gnu/ -lprotobuf \
                     -L/usr/lib/x86_64-linux-gnu/ -lglog -lboost_system -lboost_thread \
-                    -L/usr/local/cuda/lib64/ -lcudart -lcublas -lcurand \
+                    -L/usr/local/cuda/lib64/ -lcudart -lcublas -lcurand -lcudnn \
                     -L$(CAFFE)/build/lib/ -lcaffe \
                     -Wl,-rpath,$(OPENCV)/lib \
                     -Wl,-rpath,$(CAFFE)/build/lib \
-                    -Wl,-rpath,$(shell pwd)/bin
+                    -Wl,-rpath,$(shell pwd)/bin \
+                    -Wl,-rpath,/usr/local/cuda/lib64
+
 CPP_FILES := $(wildcard ./cpp/*.cpp)
 OBJ_FILES := $(addprefix ./bin/,$(notdir $(CPP_FILES:.cpp=.o)))
 
@@ -32,9 +34,3 @@ server:
 all: compile server
 clean:
 	rm -rf ./bin/*  
-cpp_test_compile:
-	$(CC) $(INCLUDE) -I$(shell pwd)/cpp -O3 -std=c++11 cpp/*.cpp test/*.cpp -o bin/cpp_test $(LIBRARY)
-shit_server:
-	CGO_LDFLAGS='-L$(shell pwd)/bin -lclass $(LIBRARY)' CGO_CFLAGS='-I$(shell pwd)/cpp' go build -o bin/shit_server_exec \
-    test/main.go
-

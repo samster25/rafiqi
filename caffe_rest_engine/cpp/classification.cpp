@@ -306,14 +306,14 @@ size_t Classifier::memory_used() {
 }
 void Classifier::move_to_cpu() {
     net_->moveToCPU();
-    mean_.refcount = 0;
-    mean_.release();
+    //mean_.refcount = 0;
+    //mean_.release();
     delete allocator_;
 }
 
 void Classifier::move_to_gpu() {
     allocator_ = new GPUAllocator(imageBufferSize);
-    mean_.upload(host_mean_);
+    //mean_.upload(host_mean_);
     net_->moveToGPU();
 
 }
@@ -497,12 +497,6 @@ const char** model_classify_batch(c_model model,
     try
     {
         classifier_ctx *ctx = (classifier_ctx *) model;
-        std::cout << "MOVING TO CPU AND SLEEPING\n" << std::endl; 
-        move_to_cpu(model);
-        sleep(5); 
-        std::cout << "MOVING TO GPU AND SLEEPING\n" << std::endl; 
-        move_to_gpu(model); 
-        sleep(5);  
         std::vector<Mat> imgs;
         
         for (int i = 0; i < num; i++) { 

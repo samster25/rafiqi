@@ -16,6 +16,8 @@ c_model model_init(char* model_file, char* trained_file,
 
 const char* model_classify(c_model model,
                                 char* buffer, size_t length);
+const char** model_classify_batch(c_model model,
+                                char** buffer, size_t *length, size_t num);
 
 void model_destroy(c_model model);
 

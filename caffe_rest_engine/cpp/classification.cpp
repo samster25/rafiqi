@@ -32,14 +32,14 @@ public:
                const string& label_file,
                GPUAllocator* allocator);
 
-    std::vector<Prediction> Classify(const Mat& img, int N = 5);
+    std::vector<std::vector<Prediction> > Classify(const std::vector<Mat>& imgs, int N = 5);
 
 private:
     void SetMean(const string& mean_file);
 
-    std::vector<float> Predict(const Mat& img);
+    std::vector<std::vector<float> > Predict(const std::vector<Mat>& imgs);
 
-    void WrapInputLayer(std::vector<GpuMat>* input_channels);
+    void WrapInputLayer(std::vector<GpuMat>* input_channels, int i);
 
     void Preprocess(const Mat& img,
                     std::vector<GpuMat>* input_channels);
@@ -110,20 +110,24 @@ static std::vector<int> Argmax(const std::vector<float>& v, int N)
     return result;
 }
 
-/* Return the top N predictions. */
-std::vector<Prediction> Classifier::Classify(const Mat& img, int N)
+std::vector<std::vector<Prediction> > Classifier::Classify(const std::vector<Mat>& imgs, int N)
 {
-    std::vector<float> output = Predict(img);
-
-    std::vector<int> maxN = Argmax(output, N);
-    std::vector<Prediction> predictions;
-    for (int i = 0; i < N; ++i)
-    {
-        int idx = maxN[i];
-        predictions.push_back(std::make_pair(labels_[idx], output[idx]));
+    std::vector<std::vector<float> > outputs = Predict(imgs);
+    std::vector<std::vector<Prediction> > all_predictions;
+    N = std::min<int>(outputs[0].size(), N);
+    for (int k = 0; k < imgs.size(); k++) {
+        std::vector<Prediction> predictions;
+        std::vector<float> output = outputs[k];
+        std::vector<int> maxN = Argmax(output, N);
+        
+        for (int i = 0; i < N; ++i)
+        {
+            int idx = maxN[i];
+            predictions.push_back(std::make_pair(labels_[idx], output[idx]));
+        }
+        all_predictions.push_back(predictions);  
     }
-
-    return predictions;
+    return all_predictions;
 }
 
 /* Load the mean file in binaryproto format. */
@@ -160,41 +164,40 @@ void Classifier::SetMean(const string& mean_file)
     mean_.upload(host_mean);
 }
 
-std::vector<float> Classifier::Predict(const Mat& img)
+std::vector<std::vector<float> > Classifier::Predict(const std::vector<Mat>& imgs)
 {
     Blob<float>* input_layer = net_->input_blobs()[0];
-    input_layer->Reshape(1, num_channels_,
+    input_layer->Reshape(imgs.size(), num_channels_,
                          input_geometry_.height, input_geometry_.width);
     /* Forward dimension change to all layers. */
     net_->Reshape();
-
-    std::vector<GpuMat> input_channels;
-    WrapInputLayer(&input_channels);
-
-    Preprocess(img, &input_channels);
-
+    for (int i = 0; i < imgs.size(); i++) {
+     std::vector<GpuMat> input_channels;
+     WrapInputLayer(&input_channels, i);
+     Preprocess(imgs[i], &input_channels);
+    }
     net_->Forward();
 
     /* Copy the output layer to a std::vector */
     Blob<float>* output_layer = net_->output_blobs()[0];
-    const float* begin = output_layer->cpu_data();
-    const float* end = begin + output_layer->channels();
-    return std::vector<float>(begin, end);
+    std::vector<std::vector<float> > outputs;
+    for (int i = 0; i < output_layer->num(); ++i) {
+      const float* begin = output_layer->cpu_data() + i * output_layer->channels();
+      const float* end = begin + output_layer->channels();
+      outputs.push_back(std::vector<float>(begin, end));
+    }
+    return outputs;
 }
 
-/* Wrap the input layer of the network in separate GpuMat objects
- * (one per channel). This way we save one memcpy operation and we
- * don't need to rely on cudaMemcpy2D. The last preprocessing
- * operation will write the separate channels directly to the input
- * layer. */
-void Classifier::WrapInputLayer(std::vector<GpuMat>* input_channels)
+void Classifier::WrapInputLayer(std::vector<GpuMat>* input_channels, int i)
 {
     Blob<float>* input_layer = net_->input_blobs()[0];
 
     int width = input_layer->width();
     int height = input_layer->height();
-    float* input_data = input_layer->mutable_gpu_data();
-    for (int i = 0; i < input_layer->channels(); ++i)
+    int channels = input_layer->channels();
+    float* input_data = input_layer->mutable_gpu_data() + i * width * height * channels;
+    for (int i = 0; i < channels; ++i)
     {
         GpuMat channel(height, width, CV_32FC1, input_data);
         input_channels->push_back(channel);
@@ -331,7 +334,7 @@ struct classifier_ctx
  * inference tasks can execute in parallel on the same GPU. This helps improve
  * GPU utilization since some kernel operations of inference will not fully use
  * the GPU. */
-constexpr static int kContextsPerDevice = 4;
+constexpr static int kContextsPerDevice = 2;
 
 c_model model_init(char* model_file, char* trained_file,
                                       char* mean_file, char* label_file)
@@ -376,52 +379,67 @@ c_model model_init(char* model_file, char* trained_file,
         return nullptr;
     }
 }
-
-const char* model_classify(c_model model,
-                                char* buffer, size_t length)
+const char** model_classify_batch(c_model model,
+                                char** buffer, size_t *length, size_t num)
 {
     try
     {
         classifier_ctx *ctx = (classifier_ctx *) model;
-        _InputArray array(buffer, length);
-
-        Mat img = imdecode(array, -1);
-        if (img.empty())
-            throw std::invalid_argument("could not decode image");
-
-        std::vector<Prediction> predictions;
+        std::vector<Mat> imgs;
+        
+        for (int i = 0; i < num; i++) { 
+            _InputArray array(buffer[i], length[i]);
+        
+            Mat img = imdecode(array, -1);
+            if (img.empty())
+                throw std::invalid_argument("could not decode image");
+            imgs.push_back(img);
+        }
+        std::vector<std::vector<Prediction> > all_predictions;
         {
             /* In this scope a Caffe context is acquired for inference and it
              * will be automatically released back to the context pool when
              * exiting this scope. */
             ScopedContext<CaffeContext> context(ctx->pool);
             auto classifier = context->CaffeClassifier();
-            predictions = classifier->Classify(img);
+            all_predictions = classifier->Classify(imgs);
         }
-
+        const char **output = (const char **) malloc(num*sizeof(const char *));
         /* Write the top N predictions in JSON format. */
-        std::ostringstream os;
-        os << "[";
-        for (size_t i = 0; i < predictions.size(); ++i)
-        {
-            Prediction p = predictions[i];
-            os << "{\"confidence\":" << std::fixed << std::setprecision(4)
-               << p.second << ",";
-            os << "\"label\":" << "\"" << p.first << "\"" << "}";
-            if (i != predictions.size() - 1)
-                os << ",";
-        }
-        os << "]";
+        for (int j = 0; j < all_predictions.size(); j++) {
+            std::vector<Prediction> predictions = all_predictions[j];  
+            std::ostringstream os;
+            os << "[";
+            for (size_t i = 0; i < predictions.size(); ++i)
+            {
+                Prediction p = predictions[i]; 
+                os << "{\"confidence\":" << std::fixed << std::setprecision(4)
+                   << p.second << ",";
+                os << "\"label\":" << "\"" << p.first << "\"" << "}";
+                if (i != predictions.size() - 1)
+                    os << ",";
+            }
+            os << "]";
 
-        errno = 0;
-        std::string str = os.str();
-        return strdup(str.c_str());
+            errno = 0;
+            std::string str = os.str();
+            output[j] =  strdup(str.c_str());
+        }
+        return output;
     }
     catch (const std::invalid_argument&)
     {
         errno = EINVAL;
         return nullptr;
     }
+}
+const char* model_classify(c_model model,
+                                char* buffer, size_t length)
+{
+    const char **out =  model_classify_batch(model, &buffer, &length, 1);
+    const char *rtn = *out;
+    free(out);
+    return rtn;
 }
 
 void model_destroy(c_model model)

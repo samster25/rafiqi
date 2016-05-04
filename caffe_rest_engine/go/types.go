@@ -17,6 +17,11 @@ type Model struct {
 	ModelPath   string
 	LabelsPath  string
 	MeanPath    string
+	ModelSize   int64
+}
+
+func (m *Model) estimatedGPUMemSize() uint64 {
+	return uint64(K_CONTEXTS * (m.ModelSize + FRAME_BUF_SIZE))
 }
 
 type HashyLinkedList struct {
@@ -96,12 +101,25 @@ func NewModelFromURL(name string, modelReq ModelRequest) Model {
 	meansName, err := DownloadAndWrite(name, name+"_mean", modelReq.MeanFile.URL, []byte(modelReq.MeanFile.Blob))
 	modelName, err := DownloadAndWrite(name, name+"_mod", modelReq.ModFile.URL, []byte(modelReq.ModFile.Blob))
 
+	modelFile, err := os.Open(weightsName)
+	if err != nil {
+		panic("Error opening model: " + err.Error())
+	}
+	info, err := modelFile.Stat()
+	if err != nil {
+		panic("Error stat'ing model: " + err.Error())
+	}
+
+	modelSize := info.Size()
+	Debugf("Set model size to: %d", modelSize)
+
 	return Model{
 		Name:        name,
 		WeightsPath: weightsName,
 		ModelPath:   modelName,
 		LabelsPath:  labelsName,
 		MeanPath:    meansName,
+		ModelSize:   modelSize,
 	}
 }
 

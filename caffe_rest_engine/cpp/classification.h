@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include <stddef.h>
+#include <stdint.h>
 
 typedef struct classifier_ctx classifier_ctx;
 typedef classifier_ctx* c_model;
@@ -20,6 +21,9 @@ const char** model_classify_batch(c_model model,
                                 char** buffer, size_t *length, size_t num);
 
 void model_destroy(c_model model);
+
+uint64_t get_total_gpu_memory();
+uint64_t get_free_gpu_memory();
 
 #ifdef __cplusplus
 }

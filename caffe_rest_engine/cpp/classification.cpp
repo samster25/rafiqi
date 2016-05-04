@@ -2,6 +2,7 @@
 
 #include <iosfwd>
 #include <vector>
+#include <stdint.h>
 
 #define USE_CUDNN 1
 #include <caffe/caffe.hpp>
@@ -18,6 +19,23 @@ using std::string;
 using GpuMat = cv::cuda::GpuMat;
 using namespace cv;
 
+/* C bindings cudaMemGetInfo */
+uint64_t get_total_gpu_memory() {
+  size_t free;
+  size_t total;
+
+  cudaMemGetInfo(&free, &total);
+  return (uint64_t) total;
+}
+
+uint64_t get_free_gpu_memory() {
+  size_t free;
+  size_t total;
+
+  cudaMemGetInfo(&free, &total);
+  printf("hmm %d\n", free);
+  return (int64_t) free;
+}
 /* Pair (label, confidence) representing a prediction. */
 typedef std::pair<string, float> Prediction;
 

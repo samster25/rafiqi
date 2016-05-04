@@ -40,7 +40,7 @@ func NewModelBatchEntry() *ModelBatchEntry {
 	jentry := &ModelBatchEntry{
 		JobEntries:   list.New(),
 		Used:         false,
-		MaxBatchSize: 1,
+		MaxBatchSize: 32,
 	}
 	return jentry
 }
@@ -79,6 +79,7 @@ func (h *HashyLinkedList) CreateBatchJob(model string) []Job {
 	batchAmt := modelBatchEntry.MaxBatchSize
 	jobList := modelBatchEntry.JobEntries
 	jobListLen := jobList.Len()
+	fmt.Println("jl len", jobListLen)
 
 	if jobListLen == 0 {
 		return nil

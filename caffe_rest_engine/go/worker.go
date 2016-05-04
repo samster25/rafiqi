@@ -110,13 +110,11 @@ func (w Worker) classify(job_model string, jobs []Job) []string {
 	entry := InitializeModel(&model)
 	//entry.Lock()
 	start := time.Now()
-	batch_mats := make([][]byte, len(jobs))
-	for i, job := range jobs {
-		batch_mats[i] = job.Image
-	}
+	batch_mats := make([]*C.char, len(jobs))
 	lengths := make([]C.size_t, len(jobs))
-	for i, el := range batch_mats {
-		lengths[i] = C.size_t(len(el))
+	for i, _ := range jobs {
+		batch_mats[i] = C.CString(string(jobs[i].Image))
+		lengths[i] = C.size_t(len(jobs[i].Image))
 	}
 	cstr_arr, err := C.model_classify_batch(
 		entry.Classifier,

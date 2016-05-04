@@ -1,8 +1,8 @@
 package main
 
 import (
-//	"fmt"
-//	"time"
+	//	"fmt"
+	"time"
 )
 
 type BatchDaemon struct {
@@ -45,18 +45,21 @@ func (b *BatchDaemon) Start() {
 			select {
 			case modelString := <-b.IncrementChannel:
 				b.ModelInfo[modelString].count++
-			default:
+			case <-time.After(QUANTA * time.Millisecond):
 				for el := LRU.Front(); el != nil; el = el.Next() {
 					model := (el.Value).(string)
-					modelInfo := b.ModelInfo[model]
+					modelInfo, ok := b.ModelInfo[model]
+					if !ok {
+						continue
+					}
 					//if modelInfo.count >= modelInfo.threshold {
 					//	modelInfo.count = modelInfo.count - modelInfo.max_batch_size
 					//	if modelInfo.count < 0 {
 					//		modelInfo.count = 0
 					//	}
-					if modelInfo.count > 0 {
+					if modelInfo.count > 20 {
 						WorkQueue.batchedJobs <- model
-						modelInfo.count--
+						modelInfo.count = 0
 					}
 				}
 			}

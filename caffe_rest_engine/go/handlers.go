@@ -15,6 +15,7 @@ import (
 )
 
 var db *bolt.DB
+var initCount = 0
 
 const (
 	DB_NAME = "models.db"
@@ -82,13 +83,21 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 		Model: r.FormValue("model_name"),
 		Image: image,
 	}
+	if initCount == 0 {
+
+		LRU.PushBack(r.FormValue("model_name"))
+		batch_daemon.ModelInfo[r.FormValue("model_name")] = NewModelEntry()
+		initCount++
+	}
 	job.Output = make(chan string)
 	WorkQueue.AddJob(job)
 	fmt.Println("finished addjob")
 	batch_daemon.IncrementChannel <- job.Model
 	select {
 	case classified := <-job.Output:
-		writeResp(w, classified, 200)
+		w.WriteHeader(200)
+		w.Header().Set("content-type", "application/json")
+		w.Write([]byte(classified))
 		LogTimef("Request returning success", start)
 		return
 	}

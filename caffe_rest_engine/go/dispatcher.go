@@ -10,7 +10,7 @@ type Dispatcher struct {
 	Policy       string
 	NWorkers     int
 	Stop         chan bool
-	WorkersQueue chan chan []Job
+	WorkersQueue chan chan string
 }
 
 func NewDispatcher(policy string, nworkers int) Dispatcher {
@@ -18,7 +18,7 @@ func NewDispatcher(policy string, nworkers int) Dispatcher {
 		Policy:       policy,
 		NWorkers:     nworkers,
 		Stop:         make(chan bool),
-		WorkersQueue: make(chan chan []Job, nworkers)}
+		WorkersQueue: make(chan chan string, nworkers)}
 	return dispat
 }
 
@@ -31,12 +31,14 @@ func (dis Dispatcher) StartDispatcher() {
 
 	go func() {
 		for {
-			currJobs := WorkQueue.PopFront(MAX_BATCH_AMT)
-			Debugf("Pulled off %d jobs", len(currJobs))
-			go func() {
-				currWorkerQueue := <-dis.WorkersQueue
-				currWorkerQueue <- currJobs
-			}()
+			select {
+			case currModel := <-WorkQueue.batchedJobs: //PopFront(MAX_BATCH_AMT)
+				Debugf("Current Model %s", currModel)
+				go func() {
+					currWorkerQueue := <-dis.WorkersQueue
+					currWorkerQueue <- currModel
+				}()
+			}
 		}
 	}()
 	return

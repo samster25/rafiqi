@@ -78,15 +78,14 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	loadedModels.RLock()
 	job := Job{
 		Model: r.FormValue("model_name"),
 		Image: image,
 	}
-	loadedModels.RUnlock()
 	job.Output = make(chan string)
 	WorkQueue.AddJob(job)
-
+	fmt.Println("finished addjob")
+	batch_daemon.IncrementChannel <- job.Model
 	select {
 	case classified := <-job.Output:
 		writeResp(w, classified, 200)

@@ -11,6 +11,8 @@ import (
 	"sync"
 )
 
+var LRU *list.List = list.New()
+
 type Model struct {
 	Name        string
 	WeightsPath string
@@ -19,19 +21,37 @@ type Model struct {
 	MeanPath    string
 }
 
+type ModelBatchEntry struct {
+	JobEntries   *list.List
+	LRUEntry     *list.Element
+	Used         bool
+	MaxBatchSize int
+}
+
 type HashyLinkedList struct {
-	lock    sync.Mutex
-	condVar *sync.Cond
-	queue   *list.List
-	jobs    map[string]*list.List
+	lock        sync.Mutex
+	queue       *list.List
+	jobs        map[string]*ModelBatchEntry
+	lru         *list.List
+	batchedJobs chan string
+}
+
+func NewModelBatchEntry() *ModelBatchEntry {
+	jentry := &ModelBatchEntry{
+		JobEntries:   list.New(),
+		Used:         false,
+		MaxBatchSize: 1,
+	}
+	return jentry
 }
 
 func NewHashyLinkedList() *HashyLinkedList {
 	hll := &HashyLinkedList{
-		queue: list.New(),
-		jobs:  make(map[string]*list.List),
+		queue:       list.New(),
+		jobs:        make(map[string]*ModelBatchEntry),
+		lru:         list.New(),
+		batchedJobs: make(chan string),
 	}
-	hll.condVar = sync.NewCond(&hll.lock)
 	return hll
 }
 
@@ -40,29 +60,24 @@ func (h *HashyLinkedList) AddJob(job Job) {
 	newElem := h.queue.PushBack(job)
 	_, ok := h.jobs[job.Model]
 	if !ok {
-		h.jobs[job.Model] = list.New()
+		h.jobs[job.Model] = NewModelBatchEntry() //list.New()
+		//h.jobs[job.Model].LRUEntry = h.lru.PushBack(job.Model)
 	}
-	h.jobs[job.Model].PushBack(newElem)
-	h.condVar.Signal()
+	currEntry := h.jobs[job.Model]
+	currEntry.JobEntries.PushBack(newElem) //Adding to jobs for that model
+	currEntry.Used = true
 	h.lock.Unlock()
 	return
 }
 
-func (h *HashyLinkedList) PopFront(batchAmt int) []Job {
+func (h *HashyLinkedList) CreateBatchJob(model string) []Job {
 	h.lock.Lock()
-	defer h.lock.Unlock()
-	for h.queue.Len() == 0 {
-		h.condVar.Wait()
-	}
-	frontElem := h.queue.Front()
-	if frontElem == nil {
-		return nil
-	}
-	frontJob := (frontElem.Value).(Job)
-	jobList, ok := h.jobs[frontJob.Model]
+	modelBatchEntry, ok := h.jobs[model]
 	if !ok {
 		return nil
 	}
+	batchAmt := modelBatchEntry.MaxBatchSize
+	jobList := modelBatchEntry.JobEntries
 	jobListLen := jobList.Len()
 
 	if jobListLen == 0 {
@@ -74,13 +89,13 @@ func (h *HashyLinkedList) PopFront(batchAmt int) []Job {
 	}
 
 	result := make([]Job, batchAmt)
-
 	for i := 0; i < batchAmt; i++ {
 		currQueuePtr := (jobList.Remove(jobList.Front())).(*list.Element)
 		job := (h.queue.Remove(currQueuePtr)).(Job)
 		result[i] = job
 	}
 
+	h.lock.Unlock()
 	return result
 }
 

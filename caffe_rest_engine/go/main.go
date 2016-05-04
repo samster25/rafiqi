@@ -14,6 +14,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"runtime"
 	"time"
 )
 
@@ -95,6 +96,7 @@ func LogTimef(operation string, start time.Time, v ...interface{}) {
 var batch_daemon *BatchDaemon = NewBatchDaemon()
 
 func main() {
+	runtime.GOMAXPROCS(48)
 	nworkers := flag.Int("n", 4, "Enter the number of workers wanted.")
 	flag.StringVar(&errorLog, "errorLog",
 		"", "File location for error log. defaults to stderr",

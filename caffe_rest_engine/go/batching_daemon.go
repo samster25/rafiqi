@@ -1,7 +1,8 @@
 package main
 
 import (
-	//	"fmt"
+	//"fmt"
+	//	"math"
 	"time"
 )
 
@@ -52,14 +53,18 @@ func (b *BatchDaemon) Start() {
 					if !ok {
 						continue
 					}
-					//if modelInfo.count >= modelInfo.threshold {
-					//	modelInfo.count = modelInfo.count - modelInfo.max_batch_size
-					//	if modelInfo.count < 0 {
-					//		modelInfo.count = 0
-					//	}
-					if modelInfo.count > 20 {
+					if modelInfo.count >= modelInfo.threshold && modelInfo.count != 0 {
+						modelInfo.threshold = modelInfo.threshold + modelInfo.count
+						//fmt.Println("Threshold increased", modelInfo.threshold)
+						modelInfo.count = modelInfo.count - MAX_BATCH_AMT
+						if modelInfo.count < 0 {
+							modelInfo.count = 0
+						}
 						WorkQueue.batchedJobs <- model
-						modelInfo.count = 0
+
+					} else {
+						modelInfo.threshold = modelInfo.threshold / 2
+						//fmt.Println("Threshold decreased", modelInfo.threshold)
 					}
 				}
 			}

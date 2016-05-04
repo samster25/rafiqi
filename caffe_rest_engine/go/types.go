@@ -21,35 +21,34 @@ type Model struct {
 	MeanPath    string
 }
 
-type ModelBatchEntry struct {
-	JobEntries   *list.List
-	LRUEntry     *list.Element
-	Used         bool
-	MaxBatchSize int
-}
+//type ModelBatchEntry struct {
+//	JobEntries   *list.List
+//	LRUEntry     *list.Element
+//	Used         bool
+//	MaxBatchSize int
+//}
 
 type HashyLinkedList struct {
 	lock        sync.Mutex
 	queue       *list.List
-	jobs        map[string]*ModelBatchEntry
-	lru         *list.List
+	jobs        map[string]*list.List
 	batchedJobs chan string
 }
 
-func NewModelBatchEntry() *ModelBatchEntry {
-	jentry := &ModelBatchEntry{
-		JobEntries:   list.New(),
-		Used:         false,
-		MaxBatchSize: 32,
-	}
-	return jentry
-}
+//func NewModelBatchEntry() *ModelBatchEntry {
+//	jentry := &ModelBatchEntry{
+//		JobEntries:   list.New(),
+//		Used:         false,
+//		MaxBatchSize: 32,
+//	}
+//	return jentry
+//}
 
 func NewHashyLinkedList() *HashyLinkedList {
 	hll := &HashyLinkedList{
-		queue:       list.New(),
-		jobs:        make(map[string]*ModelBatchEntry),
-		lru:         list.New(),
+		queue: list.New(),
+		jobs:  make(map[string]*list.List),
+		//lru:         list.New(),
 		batchedJobs: make(chan string),
 	}
 	return hll
@@ -60,24 +59,22 @@ func (h *HashyLinkedList) AddJob(job Job) {
 	newElem := h.queue.PushBack(job)
 	_, ok := h.jobs[job.Model]
 	if !ok {
-		h.jobs[job.Model] = NewModelBatchEntry() //list.New()
+		h.jobs[job.Model] = list.New()
 		//h.jobs[job.Model].LRUEntry = h.lru.PushBack(job.Model)
 	}
-	currEntry := h.jobs[job.Model]
-	currEntry.JobEntries.PushBack(newElem) //Adding to jobs for that model
-	currEntry.Used = true
+	jobList := h.jobs[job.Model]
+	jobList.PushBack(newElem) //Adding to jobs for that model
 	h.lock.Unlock()
 	return
 }
 
 func (h *HashyLinkedList) CreateBatchJob(model string) []Job {
 	h.lock.Lock()
-	modelBatchEntry, ok := h.jobs[model]
+	jobList, ok := h.jobs[model]
 	if !ok {
 		return nil
 	}
-	batchAmt := modelBatchEntry.MaxBatchSize
-	jobList := modelBatchEntry.JobEntries
+	batchAmt := MAX_BATCH_AMT
 	jobListLen := jobList.Len()
 	fmt.Println("jl len", jobListLen)
 

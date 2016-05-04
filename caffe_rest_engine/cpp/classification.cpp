@@ -242,9 +242,9 @@ void Classifier::Preprocess(const Mat& host_img,
      * objects in input_channels. */
     cuda::split(sample_normalized, *input_channels);
 
-    CHECK(reinterpret_cast<float*>(input_channels->at(0).data)
-          == net_->input_blobs()[0]->gpu_data())
-        << "Input channels are not wrapping the input layer of the network.";
+    //CHECK(reinterpret_cast<float*>(input_channels->at(0).data)
+    //      == net_->input_blobs()[0]->gpu_data())
+    //    << "Input channels are not wrapping the input layer of the network.";
 }
 
 /* By using Go as the HTTP server, we have potentially more CPU threads than
@@ -283,7 +283,7 @@ public:
         if (st != cudaSuccess)
             throw std::invalid_argument("could not set CUDA device");
 
-        allocator_.reset(new GPUAllocator(1024 * 1024 * 128));
+        allocator_.reset(new GPUAllocator(1024 * 1024 * 1024));
         caffe_context_.reset(new Caffe);
         Caffe::Set(caffe_context_.get());
         classifier_.reset(new Classifier(model_file, trained_file,

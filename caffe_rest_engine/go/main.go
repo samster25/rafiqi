@@ -14,6 +14,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"runtime"
 	"time"
 )
 
@@ -44,6 +45,7 @@ func preload() {
 			if err != nil {
 				continue
 			}
+			LRU.PushBack(model.Name)
 			InitializeModel(&model)
 		}
 		return nil
@@ -91,7 +93,10 @@ func LogTimef(operation string, start time.Time, v ...interface{}) {
 	Debugf(fmt.Sprintf("%v took %vs (%vms)", operation, float64(duration)/1000.0, duration), v...)
 }
 
+var batch_daemon *BatchDaemon = NewBatchDaemon()
+
 func main() {
+	runtime.GOMAXPROCS(48)
 	nworkers := flag.Int("n", 4, "Enter the number of workers wanted.")
 	flag.StringVar(&errorLog, "errorLog",
 		"", "File location for error log. defaults to stderr",
@@ -121,6 +126,8 @@ func main() {
 	fmt.Println("nworker", *nworkers)
 	dis := NewDispatcher("placeholder", *nworkers)
 	dis.StartDispatcher()
+	fmt.Println("Starting Background Batching Daemon")
+	batch_daemon.Start()
 	fmt.Println("Registering HTTP Function")
 	http.HandleFunc("/classify", JobHandler)
 	http.HandleFunc("/register", RegisterHandler)

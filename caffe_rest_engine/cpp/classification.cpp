@@ -2,7 +2,6 @@
 
 #include <iosfwd>
 #include <vector>
-
 #define USE_CUDNN 1
 #include <caffe/caffe.hpp>
 #include <caffe/net.hpp>
@@ -20,7 +19,7 @@ using std::string;
 using GpuMat = cv::cuda::GpuMat;
 using namespace cv;
 constexpr static int kContextsPerDevice = 2;
-
+constexpr static int imageBufferSize = 128 * 1024 * 1024;
 /* Pair (label, confidence) representing a prediction. */
 typedef std::pair<string, float> Prediction;
 
@@ -45,6 +44,7 @@ public:
     size_t memory_used();
     void move_to_cpu();
     void move_to_gpu();
+
 private:
     void SetMean(const string& mean_file);
 
@@ -60,6 +60,7 @@ private:
     Size input_geometry_;
     int num_channels_;
     GpuMat mean_;
+    Mat host_mean_;     
     std::vector<string> labels_;
 };
 
@@ -70,7 +71,7 @@ Classifier::Classifier(const string& model_file,
 {
 
     Caffe::set_mode(Caffe::GPU);
-    allocator_ = new GPUAllocator(1024 * 1024 * 128);
+    allocator_ = new GPUAllocator(imageBufferSize);
     
     /* Load the network. */
     net_ = std::make_shared<Net<float>>(model_file, TEST);
@@ -112,7 +113,7 @@ Classifier::Classifier(const string& model_file,
 {
     Caffe::set_mode(Caffe::GPU);
     /* Load the network. */
-    allocator_ = new GPUAllocator(1024 * 1024 * 128);
+    allocator_ = new GPUAllocator(imageBufferSize);
 
     net_ = std::make_shared<Net<float>>(model_file, TEST);
     //net_->ShareTrainedLayersWith(old->net_.get());
@@ -216,8 +217,8 @@ void Classifier::SetMean(const string& mean_file)
     /* Compute the global mean pixel value and create a mean image
      * filled with this value. */
     Scalar channel_mean = mean(packed_mean);
-    Mat host_mean = Mat(input_geometry_, packed_mean.type(), channel_mean);
-    mean_.upload(host_mean);
+    host_mean_ = Mat(input_geometry_, packed_mean.type(), channel_mean);
+    mean_.upload(host_mean_);
 }
 
 std::vector<std::vector<float> > Classifier::Predict(const std::vector<Mat>& imgs)
@@ -305,7 +306,18 @@ size_t Classifier::memory_used() {
 }
 void Classifier::move_to_cpu() {
     net_->moveToCPU();
+    mean_.refcount = 0;
+    mean_.release();
+    delete allocator_;
 }
+
+void Classifier::move_to_gpu() {
+    allocator_ = new GPUAllocator(imageBufferSize);
+    mean_.upload(host_mean_);
+    net_->moveToGPU();
+
+}
+
 
 /* By using Go as the HTTP server, we have potentially more CPU threads than
  * available GPUs and more threads can be added on the fly by the Go
@@ -446,9 +458,8 @@ c_model model_init(char* model_file, char* trained_file,
                 ctx->classifiers[i] = shared_context->CaffeClassifier();    
                 ctx->pool.Push(std::move(shared_context));
             }
-            ctx->pool.Push(std::move(context));
-            ctx->k = 0;
         }
+       ctx->k = 0; 
 
         if (ctx->pool.Size() == 0)
             throw std::invalid_argument("no suitable CUDA device");
@@ -464,12 +475,34 @@ c_model model_init(char* model_file, char* trained_file,
         return nullptr;
     }
 }
+
+void move_to_cpu(c_model model) {
+    classifier_ctx *ctx = (classifier_ctx *) model;
+    for (int i = 0; i < kContextsPerDevice; i++) {
+        ctx->classifiers[i]->move_to_cpu();
+    }
+}
+
+void move_to_gpu(c_model model) {
+    classifier_ctx *ctx = (classifier_ctx *) model;
+    for (int i = 0; i < kContextsPerDevice; i++) {
+        ctx->classifiers[i]->move_to_gpu();
+    }
+}
+
+
 const char** model_classify_batch(c_model model,
                                 char** buffer, size_t *length, size_t num)
 {
     try
     {
         classifier_ctx *ctx = (classifier_ctx *) model;
+        std::cout << "MOVING TO CPU AND SLEEPING\n" << std::endl; 
+        move_to_cpu(model);
+        sleep(5); 
+        std::cout << "MOVING TO GPU AND SLEEPING\n" << std::endl; 
+        move_to_gpu(model); 
+        sleep(5);  
         std::vector<Mat> imgs;
         
         for (int i = 0; i < num; i++) { 
@@ -529,39 +562,22 @@ const char** model_classify_batch(c_model model,
 //}
 
 
-void move_to_cpu(c_model model) {
-    classifier_ctx *ctx = (classifier_ctx *) model;
-    for (int i = 0; i < kContextsPerDevice; i++) {
-        ctx->classifiers[i]->move_to_cpu();
-        delete ctx->classifiers[i]->allocator_;
-    }
-}
-
-void move_to_gpu(c_model model) {
-    classifier_ctx *ctx = (classifier_ctx *) model;
-    for (int i = 0; i < kContextsPerDevice; i++) {
-        //ctx->classifiers[i]->move_to_gpu();
-    }
-}
 
 const char* model_classify(c_model model,
                                 char* buffer, size_t length)
 {
     classifier_ctx *ctx = (classifier_ctx *) model;
-    ctx->k += 1;
     const char **out =  model_classify_batch(model, &buffer, &length, 1);
     const char *rtn = *out;
     free(out);
-    if (ctx->k > 4) {
-        move_to_cpu(model);
-    }
-    
     return rtn;
 }
 
 void model_destroy(c_model model)
 {
-    delete (classifier_ctx *) model;
+    classifier_ctx *ctx = (classifier_ctx *) model;
+    for (int i = 0; i < kContextsPerDevice; i++) {
+        delete ctx->classifiers[i]->allocator_;
+    }
+    delete ctx;
 }
-
-

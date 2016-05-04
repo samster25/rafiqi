@@ -1,6 +1,7 @@
 package main
 
 // #include <stdlib.h>
+// #include <classification.h>
 import "C"
 
 //import "unsafe"
@@ -23,6 +24,7 @@ var (
 	debugLog        string
 	errorLog        string
 	noPreloadModels bool
+	maxGPUMemUsage  uint64
 
 	debugLogger *log.Logger
 	errorLogger *log.Logger
@@ -46,7 +48,7 @@ func preload() {
 				continue
 			}
 			LRU.PushBack(model.Name)
-			InitializeModel(&model)
+			MemoryManager.LoadModel(&model)
 		}
 		return nil
 	})
@@ -110,6 +112,11 @@ func main() {
 		string("Enables debug mode, which has more")+
 			string("verbose logging and times certain operations."))
 	flag.BoolVar(&noPreloadModels, "noPreloadModels", false, "Turn off model preloading.")
+
+	totalGPUMem := int64(C.get_total_gpu_memory())
+
+	flag.Uint64Var(&maxGPUMemUsage, "maxCacheSize", uint64(totalGPUMem), "Maximum amount of space used in GPU memory at one time (in bytes).")
+
 	flag.Parse()
 
 	setupLoggers()

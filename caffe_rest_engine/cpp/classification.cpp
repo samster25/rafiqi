@@ -2,6 +2,8 @@
 
 #include <iosfwd>
 #include <vector>
+#include <stdint.h>
+
 #define USE_CUDNN 1
 #include <caffe/caffe.hpp>
 #include <caffe/net.hpp>
@@ -20,6 +22,23 @@ using GpuMat = cv::cuda::GpuMat;
 using namespace cv;
 constexpr static int kContextsPerDevice = 2;
 constexpr static int imageBufferSize = 128 * 1024 * 1024;
+
+/* C bindings cudaMemGetInfo */
+uint64_t get_total_gpu_memory() {
+  size_t free;
+  size_t total;
+
+  cudaMemGetInfo(&free, &total);
+  return (uint64_t) total;
+}
+
+uint64_t get_free_gpu_memory() {
+  size_t free;
+  size_t total;
+
+  cudaMemGetInfo(&free, &total);
+  return (int64_t) free;
+}
 /* Pair (label, confidence) representing a prediction. */
 typedef std::pair<string, float> Prediction;
 

@@ -10,21 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/boltdb/bolt"
-	"sync"
 	"time"
 )
-
-type LoadedModelsMap struct {
-	sync.RWMutex
-	Models map[string]*ModelEntry
-}
-
-type ModelEntry struct {
-	sync.Mutex
-	Classifier C.c_model
-}
-
-var loadedModels LoadedModelsMap
 
 type Worker struct {
 	ID          int
@@ -43,41 +30,6 @@ func NewWorker(id int, workers chan chan string) Worker {
 		WorkQueue:   make(chan string),
 		WorkerQueue: workers,
 		Quit:        make(chan bool)}
-}
-
-func InitializeModel(m *Model) *ModelEntry {
-	var entry *ModelEntry
-	loadedModels.RLock()
-	entry, ok := loadedModels.Models[m.Name]
-	loadedModels.RUnlock()
-
-	if !ok {
-		cmean := C.CString(m.MeanPath)
-		clabel := C.CString(m.LabelsPath)
-		cweights := C.CString(m.WeightsPath)
-		cmodel := C.CString(m.ModelPath)
-
-		loadedModels.Lock()
-		// Ensure no one added this model between the RUnlock and here
-		_, ok = loadedModels.Models[m.Name]
-		if !ok {
-			start := time.Now()
-			cclass, err := C.model_init(cmodel, cweights, cmean, clabel)
-			fmt.Println("here", m.Name)
-			LogTimef("%v model_init", start, m.Name)
-
-			if err != nil {
-				handleError("init failed: ", err)
-			}
-
-			entry = &ModelEntry{Classifier: cclass}
-			loadedModels.Models[m.Name] = entry
-		}
-		loadedModels.Unlock()
-	}
-
-	return entry
-
 }
 
 func (w Worker) classify(job_model string, jobs []Job) []string {
@@ -107,7 +59,7 @@ func (w Worker) classify(job_model string, jobs []Job) []string {
 	var model Model
 	dec.Decode(&model)
 
-	entry := InitializeModel(&model)
+	entry := MemoryManager.LoadModel(&model)
 	//entry.Lock()
 	start := time.Now()
 	batch_mats := make([]*C.char, len(jobs))
@@ -173,9 +125,6 @@ func (w Worker) Stop() {
 }
 
 func init() {
-	loadedModels = LoadedModelsMap{
-		Models: make(map[string]*ModelEntry),
-	}
 
 	C.classifier_init()
 }

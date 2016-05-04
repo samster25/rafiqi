@@ -15,7 +15,6 @@ import (
 )
 
 var db *bolt.DB
-var initCount = 0
 
 const (
 	DB_NAME = "models.db"
@@ -83,12 +82,13 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 		Model: r.FormValue("model_name"),
 		Image: image,
 	}
-	if initCount == 0 {
-
-		LRU.PushBack(r.FormValue("model_name"))
-		batch_daemon.ModelInfo[r.FormValue("model_name")] = NewModelEntry()
-		initCount++
-	}
+	/*
+		if debugMode {
+			LRU.PushBack(r.FormValue("model_name"))
+			batch_daemon.ModelInfo[r.FormValue("model_name")] = NewModelEntry()
+			LRU.Unlock()
+		}
+	*/
 	job.Output = make(chan string)
 	WorkQueue.AddJob(job)
 	fmt.Println("finished addjob")
@@ -147,7 +147,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 				writeError(w, err)
 				return
 			}
-			MemoryManager.LoadModel(&model)
+			MemoryManager.LoadModel(model)
 		}
 
 		resp := RegisterResponse{

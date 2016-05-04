@@ -22,6 +22,9 @@ const char** model_classify_batch(c_model model,
 
 void model_destroy(c_model model);
 
+void move_to_cpu(c_model model);
+void move_to_gpu(c_model model);
+
 uint64_t get_total_gpu_memory();
 uint64_t get_free_gpu_memory();
 

@@ -24,6 +24,7 @@ type LoadedModelsMap struct {
 type ModelEntry struct {
 	sync.Mutex
 	Classifier C.c_model
+	InGPU      bool
 }
 
 var loadedModels LoadedModelsMap
@@ -39,6 +40,7 @@ func (g *GPUMem) CanLoad(m *Model) bool {
 
 func (g *GPUMem) EvictLRU() {
 	Debugf("Eviction beginning!")
+	Debugf("Currently %d entries in LRU", g.LRU.Len())
 	g.LRULock.Lock()
 	evicted := g.LRU.Back()
 
@@ -46,7 +48,16 @@ func (g *GPUMem) EvictLRU() {
 		panic("Exceeded mem usage, but no models loaded!")
 	}
 
-	model := (evicted.Value).(*Model)
+	model := (evicted.Value).(Model)
+	/*
+		// Make sure we aren't evicting ourselves
+		if model.Name == m.Name {
+			evicted = evicted.Prev()
+			if evicted == nil {
+				panic("")
+			}
+		}
+	*/
 	g.LRU.Remove(evicted)
 	g.LRULock.Unlock()
 
@@ -55,12 +66,15 @@ func (g *GPUMem) EvictLRU() {
 	entry, ok := loadedModels.Models[model.Name]
 	if !ok {
 		panic("Tried to evict model not in loaded models: " + model.Name)
+	} else if !entry.InGPU {
+		panic("Tried to evict model not in GPU: " + model.Name)
 	}
-	delete(loadedModels.Models, model.Name)
 
+	entry.InGPU = false
 	Debugf("Destroy beginning!")
 	start := time.Now()
-	C.model_destroy(entry.Classifier)
+	//C.model_destroy(entry.Classifier)
+	g.MoveToCPU(&model, entry)
 	LogTimef("%v model destroy", start, model.Name)
 }
 
@@ -86,44 +100,78 @@ func (g *GPUMem) InitModel(m *Model) *ModelEntry {
 	}
 
 	g.LRULock.Lock()
-	g.LRU.PushBack(m)
+	Debugf("Adding to LRU: %v", m.Name)
+	g.LRU.PushBack(*m)
 	g.LRULock.Unlock()
 
-	return &ModelEntry{Classifier: cclass}
-}
-
-func (g *GPUMem) UpdateLRU(m *Model) {
-	g.LRULock.Lock()
-	defer g.LRULock.Unlock()
-	for e := g.LRU.Front(); e != nil; e = e.Next() {
-		model := (e.Value).(*Model)
-		if model.Name == m.Name {
-			g.LRU.MoveToFront(e)
-			break
-		}
+	return &ModelEntry{
+		Classifier: cclass,
+		InGPU:      true,
 	}
 }
 
-func (g *GPUMem) LoadModel(m *Model) *ModelEntry {
-	Debugf("LoadModel begin")
+func (g *GPUMem) UpdateLRU(m *Model) {
+	Debugf("In update LRU %v", m.Name)
+	g.LRULock.Lock()
+	defer g.LRULock.Unlock()
+	for e := g.LRU.Front(); e != nil; e = e.Next() {
+		model := (e.Value).(Model)
+		if model.Name == m.Name {
+			g.LRU.MoveToFront(e)
+			return
+		}
+	}
+
+	panic("Tried to update model, but not in LRU: " + m.Name)
+}
+
+func (g *GPUMem) MoveToCPU(m *Model, entry *ModelEntry) {
+	start := time.Now()
+	Debugf("%v move to cpu beginning", m.Name)
+	C.move_to_cpu(entry.Classifier)
+	LogTimef("%v move to cpu", start, m.Name)
+}
+
+func (g *GPUMem) MoveToGPU(m *Model, entry *ModelEntry) {
+	Debugf("About to move %v onto the GPU", m.Name)
+	g.InitLock.Lock()
+	for !g.CanLoad(m) {
+		g.EvictLRU()
+	}
+	g.InitLock.Unlock()
+
+	start := time.Now()
+	entry.InGPU = true
+	C.move_to_gpu(entry.Classifier)
+	g.LRULock.Lock()
+	g.LRU.PushFront(*m)
+	g.LRULock.Unlock()
+
+	LogTimef("%v move to gpu", start, m.Name)
+}
+
+func (g *GPUMem) LoadModel(m Model) *ModelEntry {
+	Debugf("LoadModel begin for %v", m.Name)
+	Debugf("Currently %d entries in LRU", g.LRU.Len())
 	var entry *ModelEntry
 	loadedModels.RLock()
 	entry, ok := loadedModels.Models[m.Name]
 	loadedModels.RUnlock()
 
 	if !ok {
-
 		loadedModels.Lock()
 		// Ensure no one added this model between the RUnlock and here
 		_, ok = loadedModels.Models[m.Name]
 		if !ok {
-			entry = g.InitModel(m)
+			entry = g.InitModel(&m)
 			loadedModels.Models[m.Name] = entry
 		}
 		loadedModels.Unlock()
+	} else if !entry.InGPU {
+		g.MoveToGPU(&m, entry)
 	}
 
-	g.UpdateLRU(m)
+	g.UpdateLRU(&m)
 	return entry
 
 }

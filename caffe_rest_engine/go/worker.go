@@ -59,7 +59,7 @@ func (w Worker) classify(job_model string, jobs []Job) []string {
 	var model Model
 	dec.Decode(&model)
 
-	entry := MemoryManager.LoadModel(&model)
+	entry := MemoryManager.LoadModel(model)
 	//entry.Lock()
 	start := time.Now()
 	batch_mats := make([]*C.char, len(jobs))

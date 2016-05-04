@@ -37,8 +37,8 @@ func preload() {
 	err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(MODELS_BUCKET)
 		c := b.Cursor()
-		var model Model
 		for k, v := c.First(); k != nil; k, v = c.Next() {
+			var model Model
 			modelGob = make([]byte, len(v))
 			copy(modelGob, v)
 			buf := bytes.NewBuffer(modelGob)
@@ -48,7 +48,7 @@ func preload() {
 				continue
 			}
 			LRU.PushBack(model.Name)
-			MemoryManager.LoadModel(&model)
+			MemoryManager.LoadModel(model)
 		}
 		return nil
 	})

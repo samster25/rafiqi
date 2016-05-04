@@ -5,6 +5,8 @@
 
 #define USE_CUDNN 1
 #include <caffe/caffe.hpp>
+#include <caffe/net.hpp>
+
 #include <opencv2/cudaarithm.hpp>
 #include <opencv2/cudaimgproc.hpp>
 #include <opencv2/cudawarping.hpp>
@@ -17,6 +19,7 @@ using namespace caffe;
 using std::string;
 using GpuMat = cv::cuda::GpuMat;
 using namespace cv;
+constexpr static int kContextsPerDevice = 2;
 
 /* Pair (label, confidence) representing a prediction. */
 typedef std::pair<string, float> Prediction;
@@ -29,11 +32,19 @@ public:
     Classifier(const string& model_file,
                const string& trained_file,
                const string& mean_file,
+               const string& label_file);
+
+    Classifier(const string& model_file,
+               const string& trained_file,
+               const string& mean_file,
                const string& label_file,
-               GPUAllocator* allocator);
-
+               Classifier *old);
+    
+    GPUAllocator* allocator_;
     std::vector<std::vector<Prediction> > Classify(const std::vector<Mat>& imgs, int N = 5);
-
+    size_t memory_used();
+    void move_to_cpu();
+    void move_to_gpu();
 private:
     void SetMean(const string& mean_file);
 
@@ -45,7 +56,6 @@ private:
                     std::vector<GpuMat>* input_channels);
 
 private:
-    GPUAllocator* allocator_;
     std::shared_ptr<Net<float>> net_;
     Size input_geometry_;
     int num_channels_;
@@ -56,12 +66,12 @@ private:
 Classifier::Classifier(const string& model_file,
                        const string& trained_file,
                        const string& mean_file,
-                       const string& label_file,
-                       GPUAllocator* allocator)
-    : allocator_(allocator)
+                       const string& label_file)
 {
-    Caffe::set_mode(Caffe::GPU);
 
+    Caffe::set_mode(Caffe::GPU);
+    allocator_ = new GPUAllocator(1024 * 1024 * 128);
+    
     /* Load the network. */
     net_ = std::make_shared<Net<float>>(model_file, TEST);
     net_->CopyTrainedLayersFrom(trained_file);
@@ -88,6 +98,52 @@ Classifier::Classifier(const string& model_file,
     Blob<float>* output_layer = net_->output_blobs()[0];
     CHECK_EQ(labels_.size(), output_layer->channels())
         << "Number of labels is different from the output layer dimension.";
+    input_layer->Reshape(1, num_channels_,
+                         input_geometry_.height, input_geometry_.width);
+    net_->Reshape();
+
+}
+
+Classifier::Classifier(const string& model_file,
+                       const string& trained_file,
+                       const string& mean_file,
+                       const string& label_file,
+                       Classifier *old)
+{
+    Caffe::set_mode(Caffe::GPU);
+    /* Load the network. */
+    allocator_ = new GPUAllocator(1024 * 1024 * 128);
+
+    net_ = std::make_shared<Net<float>>(model_file, TEST);
+    //net_->ShareTrainedLayersWith(old->net_.get());
+    
+    CHECK_EQ(net_->num_inputs(), 1) << "Network should have exactly one input.";
+    CHECK_EQ(net_->num_outputs(), 1) << "Network should have exactly one output.";
+
+    Blob<float>* input_layer = net_->input_blobs()[0];
+    num_channels_ = input_layer->channels();
+    CHECK(num_channels_ == 3 || num_channels_ == 1)
+        << "Input layer should have 1 or 3 channels.";
+    input_geometry_ = Size(input_layer->width(), input_layer->height());
+
+    /* Load the binaryproto mean file. */
+    //SetMean(mean_file);
+    mean_ = old->mean_;
+    /* Load labels. */
+    //std::ifstream labels(label_file.c_str());
+    //CHECK(labels) << "Unable to open labels file " << label_file;
+    //string line;
+    //while (std::getline(labels, line))
+    //    labels_.push_back(string(line));
+    labels_ = old->labels_;
+    Blob<float>* output_layer = net_->output_blobs()[0];
+    CHECK_EQ(labels_.size(), output_layer->channels())
+        << "Number of labels is different from the output layer dimension.";
+
+    input_layer->Reshape(1, num_channels_,
+                         input_geometry_.height, input_geometry_.width);
+    net_->Reshape();
+
 }
 
 static bool PairCompare(const std::pair<float, int>& lhs,
@@ -241,10 +297,14 @@ void Classifier::Preprocess(const Mat& host_img,
      * input layer of the network because it is wrapped by the GpuMat
      * objects in input_channels. */
     cuda::split(sample_normalized, *input_channels);
+}
 
-    CHECK(reinterpret_cast<float*>(input_channels->at(0).data)
-          == net_->input_blobs()[0]->gpu_data())
-        << "Input channels are not wrapping the input layer of the network.";
+size_t Classifier::memory_used() {
+    return net_->memory_used();
+
+}
+void Classifier::move_to_cpu() {
+    net_->moveToCPU();
 }
 
 /* By using Go as the HTTP server, we have potentially more CPU threads than
@@ -283,12 +343,32 @@ public:
         if (st != cudaSuccess)
             throw std::invalid_argument("could not set CUDA device");
 
-        allocator_.reset(new GPUAllocator(1024 * 1024 * 128));
+        //allocator_.reset(new GPUAllocator(1024 * 1024 * 128));
+        caffe_context_.reset(new Caffe);
+        Caffe::Set(caffe_context_.get());
+        classifier_.reset(new Classifier(model_file, trained_file,
+                                         mean_file, label_file));
+        Caffe::Set(nullptr);
+    }
+    
+    CaffeContext(const string& model_file,
+                 const string& trained_file,
+                 const string& mean_file,
+                 const string& label_file,
+                 Classifier *old,
+                 int device)
+        : device_(device)
+    {
+        cudaError_t st = cudaSetDevice(device_);
+        if (st != cudaSuccess)
+            throw std::invalid_argument("could not set CUDA device");
+
+        //allocator_.reset(new GPUAllocator(1024 * 1024 * 128));
         caffe_context_.reset(new Caffe);
         Caffe::Set(caffe_context_.get());
         classifier_.reset(new Classifier(model_file, trained_file,
                                          mean_file, label_file,
-                                         allocator_.get()));
+                                         old));
         Caffe::Set(nullptr);
     }
 
@@ -303,7 +383,7 @@ private:
         cudaError_t st = cudaSetDevice(device_);
         if (st != cudaSuccess)
             throw std::invalid_argument("could not set CUDA device");
-        allocator_->reset();
+        classifier_->allocator_->reset();
         Caffe::Set(caffe_context_.get());
     }
 
@@ -314,7 +394,7 @@ private:
 
 private:
     int device_;
-    std::unique_ptr<GPUAllocator> allocator_;
+    //std::unique_ptr<GPUAllocator> allocator_;
     std::unique_ptr<Caffe> caffe_context_;
     std::unique_ptr<Classifier> classifier_;
 };
@@ -328,21 +408,22 @@ void classifier_init() {
 struct classifier_ctx
 {
     ContextPool<CaffeContext> pool;
+    Classifier *classifiers[kContextsPerDevice];
+    int k;
 };
 
 /* Currently, 2 execution contexts are created per GPU. In other words, 2
  * inference tasks can execute in parallel on the same GPU. This helps improve
  * GPU utilization since some kernel operations of inference will not fully use
  * the GPU. */
-constexpr static int kContextsPerDevice = 2;
 
 c_model model_init(char* model_file, char* trained_file,
                                       char* mean_file, char* label_file)
 {
     try
     {
-
-        int device_count;
+        classifier_ctx* ctx = new classifier_ctx; 
+        int device_count; 
         cudaError_t st = cudaGetDeviceCount(&device_count);
         if (st != cudaSuccess)
             throw std::invalid_argument("could not list CUDA devices");
@@ -355,19 +436,23 @@ c_model model_init(char* model_file, char* trained_file,
                 LOG(ERROR) << "Skipping device: " << dev;
                 continue;
             }
-
+            //std::unique_ptr<CaffeContext> context(new CaffeContext(model_file, trained_file,
+            //                                                           mean_file, label_file, dev));
+            //ctx->classifiers[0] = context->CaffeClassifier();    
             for (int i = 0; i < kContextsPerDevice; ++i)
             {
-                std::unique_ptr<CaffeContext> context(new CaffeContext(model_file, trained_file,
-                                                                       mean_file, label_file, dev));
-                pool.Push(std::move(context));
+                std::unique_ptr<CaffeContext> shared_context(new CaffeContext(model_file, trained_file, mean_file,
+                                                                       label_file, dev));
+                ctx->classifiers[i] = shared_context->CaffeClassifier();    
+                ctx->pool.Push(std::move(shared_context));
             }
+            ctx->pool.Push(std::move(context));
+            ctx->k = 0;
         }
 
-        if (pool.Size() == 0)
+        if (ctx->pool.Size() == 0)
             throw std::invalid_argument("no suitable CUDA device");
 
-        classifier_ctx* ctx = new classifier_ctx{std::move(pool)};
         /* Successful CUDA calls can set errno. */
         errno = 0;
         return (c_model) ctx;
@@ -433,12 +518,44 @@ const char** model_classify_batch(c_model model,
         return nullptr;
     }
 }
+
+//size_t get_mem_used(c_model model) {
+//    classifier_ctx *ctx = (classifier_ctx *) model;
+//    size_t total;
+//    for (int i = 0; i < kContextsPerDevice; i++) {
+//        std::cout << "mem used: " << ctx->classifiers[i]->memory_used() << std::endl;
+//    }
+//    return 5;
+//}
+
+
+void move_to_cpu(c_model model) {
+    classifier_ctx *ctx = (classifier_ctx *) model;
+    for (int i = 0; i < kContextsPerDevice; i++) {
+        ctx->classifiers[i]->move_to_cpu();
+        delete ctx->classifiers[i]->allocator_;
+    }
+}
+
+void move_to_gpu(c_model model) {
+    classifier_ctx *ctx = (classifier_ctx *) model;
+    for (int i = 0; i < kContextsPerDevice; i++) {
+        //ctx->classifiers[i]->move_to_gpu();
+    }
+}
+
 const char* model_classify(c_model model,
                                 char* buffer, size_t length)
 {
+    classifier_ctx *ctx = (classifier_ctx *) model;
+    ctx->k += 1;
     const char **out =  model_classify_batch(model, &buffer, &length, 1);
     const char *rtn = *out;
     free(out);
+    if (ctx->k > 4) {
+        move_to_cpu(model);
+    }
+    
     return rtn;
 }
 
@@ -446,3 +563,5 @@ void model_destroy(c_model model)
 {
     delete (classifier_ctx *) model;
 }
+
+

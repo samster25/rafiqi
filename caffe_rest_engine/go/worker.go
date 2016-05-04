@@ -108,7 +108,7 @@ func (w Worker) classify(job_model string, jobs []Job) []string {
 	dec.Decode(&model)
 
 	entry := InitializeModel(&model)
-	entry.Lock()
+	//entry.Lock()
 	start := time.Now()
 	//batch_mats := make([]C.c_mat, len(jobs))
 	//for i, job := range jobs {
@@ -120,7 +120,7 @@ func (w Worker) classify(job_model string, jobs []Job) []string {
 		C.size_t(len(jobs[0].Image)),
 	)
 	LogTimef("%v model_classify", start, jobs[0].Model)
-	entry.Unlock()
+	//entry.Unlock()
 	//byte_convert := [][]byte(cstr_arr)
 	if err != nil {
 		handleError("error classifying: ", err)

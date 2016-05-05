@@ -93,8 +93,7 @@ func (g *GPUMem) InitModel(m *Model) *ModelEntry {
 	cweights := C.CString(m.WeightsPath)
 	cmodel := C.CString(m.ModelPath)
 	start := time.Now()
-	cclass, err := C.model_init(cmodel, cweights, cmean, clabel,
-		C.size_t(NUM_CONTEXTS), C.size_t(MAX_BATCH_AMT))
+	cclass, err := C.model_init(cmodel, cweights, cmean, clabel)
 	LogTimef("%v model_init", start, m.Name)
 
 	if err != nil {

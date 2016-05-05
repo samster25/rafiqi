@@ -50,8 +50,7 @@ public:
     Classifier(const string& model_file,
                const string& trained_file,
                const string& mean_file,
-               const string& label_file,
-               size_t max_batch_size);
+               const string& label_file);
 
     Classifier(const string& model_file,
                const string& trained_file,
@@ -82,15 +81,12 @@ private:
     GpuMat mean_;
     Mat host_mean_;     
     std::vector<string> labels_;
-    size_t max_batch_size_;
 };
 
 Classifier::Classifier(const string& model_file,
                        const string& trained_file,
                        const string& mean_file,
-                       const string& label_file,
-                       size_t max_batch_size)
-                        : max_batch_size_(max_batch_size)
+                       const string& label_file)
 {
 
     Caffe::set_mode(Caffe::GPU);
@@ -122,7 +118,7 @@ Classifier::Classifier(const string& model_file,
     Blob<float>* output_layer = net_->output_blobs()[0];
     CHECK_EQ(labels_.size(), output_layer->channels())
         << "Number of labels is different from the output layer dimension.";
-    input_layer->Reshape(max_batch_size_, num_channels_,
+    input_layer->Reshape(1, num_channels_,
                          input_geometry_.height, input_geometry_.width);
     net_->Reshape();
 
@@ -371,8 +367,7 @@ public:
                  const string& trained_file,
                  const string& mean_file,
                  const string& label_file,
-                 int device,
-                 size_t max_batch_size)
+                 int device)
         : device_(device)
     {
         cudaError_t st = cudaSetDevice(device_);
@@ -383,7 +378,7 @@ public:
         caffe_context_.reset(new Caffe);
         Caffe::Set(caffe_context_.get());
         classifier_.reset(new Classifier(model_file, trained_file,
-                                         mean_file, label_file, max_batch_size));
+                                         mean_file, label_file));
         Caffe::Set(nullptr);
     }
     
@@ -444,8 +439,8 @@ void classifier_init() {
 struct classifier_ctx
 {
     ContextPool<CaffeContext> pool;
-    Classifier **classifiers;
-    size_t k;
+    Classifier *classifiers[kContextsPerDevice];
+    int k;
 };
 
 /* Currently, 2 execution contexts are created per GPU. In other words, 2
@@ -454,7 +449,7 @@ struct classifier_ctx
  * the GPU. */
 
 c_model model_init(char* model_file, char* trained_file,
-                                      char* mean_file, char* label_file, size_t num_contexts, size_t max_batch_size)
+                                      char* mean_file, char* label_file)
 {
     try
     {
@@ -465,8 +460,6 @@ c_model model_init(char* model_file, char* trained_file,
             throw std::invalid_argument("could not list CUDA devices");
         device_count = 1;
         ContextPool<CaffeContext> pool;
-        ctx->k = num_contexts; 
-        ctx->classifiers = new Classifier*[num_contexts];
         for (int dev = 0; dev < device_count; ++dev)
         {
             if (!CaffeContext::IsCompatible(dev))
@@ -474,16 +467,19 @@ c_model model_init(char* model_file, char* trained_file,
                 LOG(ERROR) << "Skipping device: " << dev;
                 continue;
             }
-            
-            for (int i = 0; i < num_contexts; ++i)
+            //std::unique_ptr<CaffeContext> context(new CaffeContext(model_file, trained_file,
+            //                                                           mean_file, label_file, dev));
+            //ctx->classifiers[0] = context->CaffeClassifier();    
+            for (int i = 0; i < kContextsPerDevice; ++i)
             {
                 std::unique_ptr<CaffeContext> shared_context(new CaffeContext(model_file, trained_file, mean_file,
-                                                                       label_file, dev, max_batch_size));
+                                                                       label_file, dev));
                 ctx->classifiers[i] = shared_context->CaffeClassifier();    
                 ctx->pool.Push(std::move(shared_context));
             }
         }
-        
+       ctx->k = 0; 
+
         if (ctx->pool.Size() == 0)
             throw std::invalid_argument("no suitable CUDA device");
 
@@ -499,39 +495,19 @@ c_model model_init(char* model_file, char* trained_file,
     }
 }
 
-//void move_to_cpu(c_model model) {
-//    classifier_ctx *ctx = (classifier_ctx *) model;
-//    {
-//        for (int i = 0; i < ctx->k; i++) {
-//            ScopedContext<CaffeContext> context(ctx->pool);
-//            auto classifier = context->CaffeClassifier();
-//            classifier->move_to_cpu(); 
-//        }
-//    }
-//}
 void move_to_cpu(c_model model) {
     classifier_ctx *ctx = (classifier_ctx *) model;
-    for (int i = 0; i < ctx->k; i++) {
+    for (int i = 0; i < kContextsPerDevice; i++) {
         ctx->classifiers[i]->move_to_cpu();
     }
 }
 
 void move_to_gpu(c_model model) {
     classifier_ctx *ctx = (classifier_ctx *) model;
-    for (int i = 0; i < ctx->k; i++) {
+    for (int i = 0; i < kContextsPerDevice; i++) {
         ctx->classifiers[i]->move_to_gpu();
     }
 }
-//void move_to_gpu(c_model model) {
-//    classifier_ctx *ctx = (classifier_ctx *) model;
-//    {
-//        for (int i = 0; i < ctx->k; i++) {
-//            ScopedContext<CaffeContext> context(ctx->pool);
-//            auto classifier = context->CaffeClassifier();
-//            classifier->move_to_gpu(); 
-//        }
-//    }
-//}
 
 
 const char** model_classify_batch(c_model model,
@@ -613,9 +589,8 @@ const char* model_classify(c_model model,
 void model_destroy(c_model model)
 {
     classifier_ctx *ctx = (classifier_ctx *) model;
-    for (int i = 0; i < ctx->k; i++) {
+    for (int i = 0; i < kContextsPerDevice; i++) {
         delete ctx->classifiers[i]->allocator_;
     }
-    delete ctx->classifiers; 
     delete ctx;
 }

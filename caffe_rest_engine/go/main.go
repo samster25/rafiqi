@@ -61,7 +61,7 @@ func preload() {
 				continue
 			}
 			LRU.PushBack(model.Name)
-
+			batch_daemon.ModelInfo[model.Name] = NewModelEntry()
 			beforeUsage = MemoryManager.GetCurrentMemUsage()
 
 			MemoryManager.LoadModel(model)

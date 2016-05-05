@@ -46,7 +46,7 @@ func (b *BatchDaemon) Start() {
 			select {
 			case modelString := <-b.IncrementChannel:
 				b.ModelInfo[modelString].count++
-			case <-time.After(QUANTA * time.Millisecond):
+			case <-time.After(time.Duration(QUANTA) * time.Millisecond):
 				for el := LRU.Front(); el != nil; el = el.Next() {
 					model := (el.Value).(string)
 					modelInfo, ok := b.ModelInfo[model]

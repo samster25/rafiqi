@@ -72,6 +72,7 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid method - only POST requests are valid for this endpoint.", 405)
 	}
 	image, err := ioutil.ReadAll(r.Body)
+	LogTimef("reading body", start)
 	if err != nil {
 		handleError("Error reading image", err)
 		return
@@ -91,7 +92,6 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 	*/
 	job.Output = make(chan string)
 	WorkQueue.AddJob(job)
-	fmt.Println("finished addjob")
 	batch_daemon.IncrementChannel <- job.Model
 	select {
 	case classified := <-job.Output:

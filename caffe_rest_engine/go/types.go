@@ -81,7 +81,6 @@ func (h *HashyLinkedList) CreateBatchJob(model string) []Job {
 	}
 	batchAmt := MAX_BATCH_AMT
 	jobListLen := jobList.Len()
-	fmt.Println("jl len", jobListLen)
 
 	if jobListLen == 0 {
 		return nil

@@ -25,6 +25,7 @@ var (
 	errorLog        string
 	noPreloadModels bool
 	maxGPUMemUsage  uint64
+	QUANTA          int64
 
 	debugLogger *log.Logger
 	errorLogger *log.Logger
@@ -99,6 +100,7 @@ var batch_daemon *BatchDaemon = NewBatchDaemon()
 
 func main() {
 	runtime.GOMAXPROCS(48)
+
 	nworkers := flag.Int("n", 4, "Enter the number of workers wanted.")
 	flag.StringVar(&errorLog, "errorLog",
 		"", "File location for error log. defaults to stderr",
@@ -116,6 +118,8 @@ func main() {
 	totalGPUMem := int64(C.get_total_gpu_memory())
 
 	flag.Uint64Var(&maxGPUMemUsage, "maxCacheSize", uint64(totalGPUMem), "Maximum amount of space used in GPU memory at one time (in bytes).")
+
+	flag.Int64Var(&QUANTA, "quanta", 10, "Watchdog quanta")
 
 	flag.Parse()
 

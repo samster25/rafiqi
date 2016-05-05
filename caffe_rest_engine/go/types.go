@@ -26,64 +26,59 @@ func (m *Model) estimatedGPUMemSize() uint64 {
 	return uint64(K_CONTEXTS * (m.ModelSize + FRAME_BUF_SIZE))
 }
 
-//type ModelBatchEntry struct {
-//	JobEntries   *list.List
-//	LRUEntry     *list.Element
-//	Used         bool
-//	MaxBatchSize int
-//}
-
 type HashyLinkedList struct {
-	lock        sync.Mutex
-	queue       *list.List
-	jobs        map[string]*list.List
+	lock sync.Mutex
+	//	queue       *list.List
+	jobs        map[string]*HLLEntry
 	batchedJobs chan string
 }
 
-//func NewModelBatchEntry() *ModelBatchEntry {
-//	jentry := &ModelBatchEntry{
-//		JobEntries:   list.New(),
-//		Used:         false,
-//		MaxBatchSize: 32,
-//	}
-//	return jentry
-//}
+type HLLEntry struct {
+	lock    sync.Mutex
+	jobList *list.List
+}
 
 func NewHashyLinkedList() *HashyLinkedList {
 	hll := &HashyLinkedList{
-		queue: list.New(),
-		jobs:  make(map[string]*list.List),
-		//lru:         list.New(),
+		//		queue: list.New(),
+		jobs:        make(map[string]*HLLEntry),
 		batchedJobs: make(chan string),
 	}
 	return hll
 }
 
-func (h *HashyLinkedList) AddJob(job Job) {
-	h.lock.Lock()
-	newElem := h.queue.PushBack(job)
-	_, ok := h.jobs[job.Model]
-	if !ok {
-		h.jobs[job.Model] = list.New()
-		//h.jobs[job.Model].LRUEntry = h.lru.PushBack(job.Model)
+func NewHLLEntry() *HLLEntry {
+	return &HLLEntry{
+		jobList: list.New(),
 	}
-	jobList := h.jobs[job.Model]
-	jobList.PushBack(newElem) //Adding to jobs for that model
-	h.lock.Unlock()
+}
+
+func (h *HashyLinkedList) AddJob(job Job) {
+	//newElem := h.queue.PushBack(job)
+	hllEntry, ok := h.jobs[job.Model]
+	if !ok {
+		fmt.Println("Model not found")
+	}
+	hllEntry.lock.Lock()
+	hllEntry.jobList.PushBack(job)
+	hllEntry.lock.Unlock() //Adding to jobs for that model
 	return
 }
 
 func (h *HashyLinkedList) CreateBatchJob(model string) []Job {
-	h.lock.Lock()
-	jobList, ok := h.jobs[model]
+	hllEntry, ok := h.jobs[model]
 	if !ok {
 		return nil
 	}
+
+	hllEntry.lock.Lock()
+	defer hllEntry.lock.Unlock()
 	batchAmt := MAX_BATCH_AMT
+	jobList := hllEntry.jobList
 	jobListLen := jobList.Len()
-	fmt.Println("jl len", jobListLen)
 
 	if jobListLen == 0 {
+		fmt.Println("NO JOBS FOR MODEL", model)
 		return nil
 	}
 
@@ -93,12 +88,10 @@ func (h *HashyLinkedList) CreateBatchJob(model string) []Job {
 
 	result := make([]Job, batchAmt)
 	for i := 0; i < batchAmt; i++ {
-		currQueuePtr := (jobList.Remove(jobList.Front())).(*list.Element)
-		job := (h.queue.Remove(currQueuePtr)).(Job)
+		job := (jobList.Remove(jobList.Front())).(Job)
+		//job := (h.queue.Remove(currQueuePtr)).(Job)
 		result[i] = job
 	}
-
-	h.lock.Unlock()
 	return result
 }
 

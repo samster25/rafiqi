@@ -49,6 +49,7 @@ func preload() {
 			}
 			LRU.PushBack(model.Name)
 			MemoryManager.LoadModel(model)
+			WorkQueue.jobs[model.Name] = NewHLLEntry()
 		}
 		return nil
 	})

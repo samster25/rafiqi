@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	//"fmt"
 	//"math"
 	"container/list"
 	"time"
@@ -9,28 +9,24 @@ import (
 
 type BatchDaemon struct {
 	ModelInfo        map[string]*ModelInfoEntry
-	QuantaTime       int
 	IncrementChannel chan string
 }
 
 type ModelInfoEntry struct {
-	count          int
-	threshold      int
-	max_batch_size int
+	count     int
+	threshold int
 }
 
 func NewModelEntry() *ModelInfoEntry {
 	return &ModelInfoEntry{
-		count:          0,
-		threshold:      0,
-		max_batch_size: 32,
+		count:     0,
+		threshold: 0,
 	}
 }
 
 func NewBatchDaemon() *BatchDaemon {
 	bd := &BatchDaemon{
 		ModelInfo:        make(map[string]*ModelInfoEntry),
-		QuantaTime:       10,
 		IncrementChannel: make(chan string),
 	}
 	return bd

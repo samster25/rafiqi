@@ -13,7 +13,7 @@ typedef classifier_ctx* c_model;
 
 void classifier_init();
 c_model model_init(char* model_file, char* trained_file,
-                                      char* mean_file, char* label_file);
+                                      char* mean_file, char* label_file, size_t, size_t);
 
 const char* model_classify(c_model model,
                                 char* buffer, size_t length);

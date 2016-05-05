@@ -101,7 +101,6 @@ func (g *GPUMem) InitModel(m *Model) *ModelEntry {
 		handleError("init failed: ", err)
 	}
 
-	C.move_to_cpu(cclass)
 	C.move_to_gpu(cclass)
 	g.LRULock.Lock()
 	Debugf("Adding to LRU: %v", m.Name)

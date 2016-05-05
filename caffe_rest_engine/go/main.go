@@ -27,6 +27,9 @@ var (
 	maxGPUMemUsage  uint64
 	QUANTA          int64
 	MAX_BATCH_AMT   int
+	NUM_CONTEXTS    int
+
+	initialMemoryUsage uint64
 
 	debugLogger *log.Logger
 	errorLogger *log.Logger
@@ -36,11 +39,20 @@ var (
 
 func preload() {
 	var modelGob []byte
-	err := db.View(func(tx *bolt.Tx) error {
+
+	var beforeUsage uint64
+
+	err := db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(MODELS_BUCKET)
 		c := b.Cursor()
+
+		i := 0
+
 		for k, v := c.First(); k != nil; k, v = c.Next() {
 			var model Model
+			var encModel bytes.Buffer
+			enc := gob.NewEncoder(&encModel)
+
 			modelGob = make([]byte, len(v))
 			copy(modelGob, v)
 			buf := bytes.NewBuffer(modelGob)
@@ -50,7 +62,40 @@ func preload() {
 				continue
 			}
 			LRU.PushBack(model.Name)
+
+			beforeUsage = MemoryManager.GetCurrentMemUsage()
+
 			MemoryManager.LoadModel(model)
+
+			if i == 0 {
+				// Find out baseline usage
+				modelUsage := MemoryManager.GetCurrentMemUsage()
+				MemoryManager.EvictLRU()
+				initialMemoryUsage = MemoryManager.GetCurrentMemUsage() - beforeUsage
+				model.ModelSize = modelUsage - initialMemoryUsage
+				MemoryManager.LoadModel(model)
+			} else {
+				model.ModelSize = MemoryManager.GetCurrentMemUsage() - beforeUsage
+			}
+
+			fmt.Println("About to update", model.Name, "to have size", model.ModelSize)
+
+			err = enc.Encode(model)
+			if err != nil {
+				return err
+			}
+
+			b := tx.Bucket(MODELS_BUCKET)
+			err = b.Put([]byte(model.Name), encModel.Bytes())
+			if err != nil {
+				return err
+			}
+
+			encModel.Truncate(0)
+
+			i += 1
+
+			return nil
 		}
 		return nil
 	})
@@ -58,6 +103,7 @@ func preload() {
 	if err != nil {
 		panic("error in transaction! " + err.Error())
 	}
+
 }
 func setupLoggers() {
 	var debugFile io.Writer
@@ -117,6 +163,7 @@ func main() {
 	flag.BoolVar(&noPreloadModels, "noPreloadModels", false, "Turn off model preloading.")
 
 	flag.IntVar(&MAX_BATCH_AMT, "maxBatch", 64, "Maximum batch size")
+	flag.IntVar(&NUM_CONTEXTS, "numContexts", 2, "Number of Caffe contexts/model")
 
 	totalGPUMem := int64(C.get_total_gpu_memory())
 
@@ -142,6 +189,9 @@ func main() {
 	dis.StartDispatcher()
 	fmt.Println("Starting Background Batching Daemon")
 	batch_daemon.Start()
+
+	//C.classifier_init()
+
 	fmt.Println("Registering HTTP Function")
 	http.HandleFunc("/classify", JobHandler)
 	http.HandleFunc("/register", RegisterHandler)

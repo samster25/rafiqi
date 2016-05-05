@@ -45,6 +45,8 @@ func (g *GPUMem) EvictLRU() {
 	evicted := g.LRU.Back()
 
 	if evicted == nil {
+		fmt.Println("Nothing in GPU!")
+		time.Sleep(10 * time.Second)
 		panic("Exceeded mem usage, but no models loaded!")
 	}
 
@@ -91,14 +93,15 @@ func (g *GPUMem) InitModel(m *Model) *ModelEntry {
 	cweights := C.CString(m.WeightsPath)
 	cmodel := C.CString(m.ModelPath)
 	start := time.Now()
-	cclass, err := C.model_init(cmodel, cweights, cmean, clabel)
-	fmt.Println("here", m.Name)
+	cclass, err := C.model_init(cmodel, cweights, cmean, clabel,
+		C.size_t(NUM_CONTEXTS), C.size_t(MAX_BATCH_AMT))
 	LogTimef("%v model_init", start, m.Name)
 
 	if err != nil {
 		handleError("init failed: ", err)
 	}
 
+	C.move_to_gpu(cclass)
 	g.LRULock.Lock()
 	Debugf("Adding to LRU: %v", m.Name)
 	g.LRU.PushBack(*m)

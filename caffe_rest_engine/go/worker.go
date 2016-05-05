@@ -80,7 +80,7 @@ func (w Worker) classify(job_model string, jobs []Job) []string {
 	if err != nil {
 		handleError("error classifying: ", err)
 	}
-	go_results := (*[MAX_BATCH_AMT](*C.char))(unsafe.Pointer(cstr_arr))
+	go_results := (*[REALLY_MAX_BATCH_AMT](*C.char))(unsafe.Pointer(cstr_arr))
 	final := make([]string, len(jobs))
 	for i := 0; i < len(jobs); i++ {
 		final[i] = C.GoString(go_results[i])
@@ -119,9 +119,4 @@ func (w Worker) Stop() {
 	go func() {
 		w.Quit <- true
 	}()
-}
-
-func init() {
-
-	C.classifier_init()
 }

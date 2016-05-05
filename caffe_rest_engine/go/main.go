@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"strconv"
 	"time"
 )
 
@@ -45,7 +46,7 @@ func preload() {
 		b := tx.Bucket(MODELS_BUCKET)
 		c := b.Cursor()
 
-		i := 0
+		//i := 0
 
 		for k, v := c.First(); k != nil; k, v = c.Next() {
 			var model Model
@@ -61,23 +62,22 @@ func preload() {
 				continue
 			}
 			LRU.PushBack(model.Name)
-
 			beforeUsage = MemoryManager.GetCurrentMemUsage()
 
 			MemoryManager.LoadModel(model)
-
-			if i == 0 {
-				// Find out baseline usage
-				modelUsage := MemoryManager.GetCurrentMemUsage()
-				MemoryManager.EvictLRU()
-				initialMemoryUsage = MemoryManager.GetCurrentMemUsage() - beforeUsage
-				model.ModelSize = modelUsage - initialMemoryUsage
-				MemoryManager.LoadModel(model)
-				i += 1
-			} else {
-				model.ModelSize = MemoryManager.GetCurrentMemUsage() - beforeUsage
-			}
-
+			/*
+				if i == 0 {
+					// Find out baseline usage
+					modelUsage := MemoryManager.GetCurrentMemUsage()
+					MemoryManager.EvictLRU()
+					initialMemoryUsage = MemoryManager.GetCurrentMemUsage() - beforeUsage
+					model.ModelSize = modelUsage - initialMemoryUsage
+					MemoryManager.LoadModel(model)
+					i += 1
+				} else {
+					model.ModelSize = MemoryManager.GetCurrentMemUsage() - beforeUsage
+				}
+			*/
 			fmt.Println("About to update", model.Name, "to have size", model.ModelSize)
 
 			err = enc.Encode(model)
@@ -141,6 +141,24 @@ func LogTimef(operation string, start time.Time, v ...interface{}) {
 
 var batch_daemon *BatchDaemon = NewBatchDaemon()
 
+func ChangeParamsHandler(w http.ResponseWriter, r *http.Request) {
+	quantaS := r.FormValue("quanta")
+	batchSizeS := r.FormValue("batchSize")
+
+	if quantaS == "" || batchSizeS == "" {
+		w.Write([]byte("missing quanta or batch size"))
+		return
+	}
+
+	quanta, _ := strconv.ParseInt(quantaS, 10, 64)
+	batchSize, _ := strconv.Atoi(batchSizeS)
+
+	QUANTA = quanta
+	MAX_BATCH_AMT = batchSize
+	w.Write([]byte("successfully changed"))
+
+}
+
 func main() {
 	runtime.GOMAXPROCS(48)
 
@@ -181,12 +199,11 @@ func main() {
 	fmt.Println("Starting Background Batching Daemon")
 	batch_daemon.Start()
 
-	//C.classifier_init()
-
 	fmt.Println("Registering HTTP Function")
 	http.HandleFunc("/classify", JobHandler)
 	http.HandleFunc("/register", RegisterHandler)
 	http.HandleFunc("/list", ListHandler)
+	http.HandleFunc("/change_params", ChangeParamsHandler)
 	fmt.Println("HTTP Server listening on 127.0.0.1:8000")
 	errhttp := http.ListenAndServe("0.0.0.0:8000", nil)
 	if errhttp != nil {

@@ -26,6 +26,7 @@ var (
 	noPreloadModels bool
 	maxGPUMemUsage  uint64
 	QUANTA          int64
+	MAX_BATCH_AMT   int
 
 	debugLogger *log.Logger
 	errorLogger *log.Logger
@@ -114,6 +115,8 @@ func main() {
 		string("Enables debug mode, which has more")+
 			string("verbose logging and times certain operations."))
 	flag.BoolVar(&noPreloadModels, "noPreloadModels", false, "Turn off model preloading.")
+
+	flag.IntVar(&MAX_BATCH_AMT, "maxBatch", 64, "Maximum batch size")
 
 	totalGPUMem := int64(C.get_total_gpu_memory())
 

@@ -181,7 +181,7 @@ func main() {
 	fmt.Println("Starting Background Batching Daemon")
 	batch_daemon.Start()
 
-	//C.classifier_init()
+	C.classifier_init()
 
 	fmt.Println("Registering HTTP Function")
 	http.HandleFunc("/classify", JobHandler)

@@ -444,7 +444,6 @@ void classifier_init() {
 struct classifier_ctx
 {
     ContextPool<CaffeContext> pool;
-    Classifier **classifiers;
     size_t k;
 };
 
@@ -466,7 +465,6 @@ c_model model_init(char* model_file, char* trained_file,
         device_count = 1;
         ContextPool<CaffeContext> pool;
         ctx->k = num_contexts; 
-        ctx->classifiers = new Classifier*[num_contexts];
         for (int dev = 0; dev < device_count; ++dev)
         {
             if (!CaffeContext::IsCompatible(dev))
@@ -474,12 +472,11 @@ c_model model_init(char* model_file, char* trained_file,
                 LOG(ERROR) << "Skipping device: " << dev;
                 continue;
             }
-            
+            std::cout << "Init'ing Device: " <<  dev << std::endl;
             for (int i = 0; i < num_contexts; ++i)
             {
                 std::unique_ptr<CaffeContext> shared_context(new CaffeContext(model_file, trained_file, mean_file,
                                                                        label_file, dev, max_batch_size));
-                ctx->classifiers[i] = shared_context->CaffeClassifier();    
                 ctx->pool.Push(std::move(shared_context));
             }
         }
@@ -499,39 +496,40 @@ c_model model_init(char* model_file, char* trained_file,
     }
 }
 
-//void move_to_cpu(c_model model) {
-//    classifier_ctx *ctx = (classifier_ctx *) model;
-//    {
-//        for (int i = 0; i < ctx->k; i++) {
-//            ScopedContext<CaffeContext> context(ctx->pool);
-//            auto classifier = context->CaffeClassifier();
-//            classifier->move_to_cpu(); 
-//        }
-//    }
-//}
 void move_to_cpu(c_model model) {
     classifier_ctx *ctx = (classifier_ctx *) model;
-    for (int i = 0; i < ctx->k; i++) {
-        ctx->classifiers[i]->move_to_cpu();
+    {
+        for (int i = 0; i < ctx->k; i++) {
+            ScopedContext<CaffeContext> context(ctx->pool);
+            auto classifier = context->CaffeClassifier();
+            classifier->move_to_cpu(); 
+        }
     }
 }
+//void move_to_cpu(c_model model) {
+//    classifier_ctx *ctx = (classifier_ctx *) model;
+//    for (int i = 0; i < ctx->k; i++) {
+//        ctx->classifiers[i]->move_to_cpu();
+//    }
+//}
+
+//void move_to_gpu(c_model model) {
+//    classifier_ctx *ctx = (classifier_ctx *) model;
+//    for (int i = 0; i < ctx->k; i++) {
+//        ctx->classifiers[i]->move_to_gpu();
+//    }
+//}
 
 void move_to_gpu(c_model model) {
     classifier_ctx *ctx = (classifier_ctx *) model;
-    for (int i = 0; i < ctx->k; i++) {
-        ctx->classifiers[i]->move_to_gpu();
+    {
+        for (int i = 0; i < ctx->k; i++) {
+            ScopedContext<CaffeContext> context(ctx->pool);
+            auto classifier = context->CaffeClassifier();
+            classifier->move_to_gpu(); 
+        }
     }
 }
-//void move_to_gpu(c_model model) {
-//    classifier_ctx *ctx = (classifier_ctx *) model;
-//    {
-//        for (int i = 0; i < ctx->k; i++) {
-//            ScopedContext<CaffeContext> context(ctx->pool);
-//            auto classifier = context->CaffeClassifier();
-//            classifier->move_to_gpu(); 
-//        }
-//    }
-//}
 
 
 const char** model_classify_batch(c_model model,
@@ -613,9 +611,12 @@ const char* model_classify(c_model model,
 void model_destroy(c_model model)
 {
     classifier_ctx *ctx = (classifier_ctx *) model;
-    for (int i = 0; i < ctx->k; i++) {
-        delete ctx->classifiers[i]->allocator_;
+    {
+        for (int i = 0; i < ctx->k; i++) {
+            ScopedContext<CaffeContext> context(ctx->pool);
+            auto classifier = context->CaffeClassifier();
+            delete classifier->allocator_; 
+        }
     }
-    delete ctx->classifiers; 
     delete ctx;
 }

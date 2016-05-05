@@ -120,3 +120,8 @@ func (w Worker) Stop() {
 		w.Quit <- true
 	}()
 }
+
+func init() {
+
+	C.classifier_init()
+}

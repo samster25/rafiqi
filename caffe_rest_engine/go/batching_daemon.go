@@ -1,8 +1,9 @@
 package main
 
 import (
-	//"fmt"
-	//	"math"
+	"fmt"
+	//"math"
+	"container/list"
 	"time"
 )
 
@@ -47,6 +48,8 @@ func (b *BatchDaemon) Start() {
 			case modelString := <-b.IncrementChannel:
 				b.ModelInfo[modelString].count++
 			case <-time.After(QUANTA * time.Millisecond):
+				noJobs := list.New()
+				haveJobs := list.New()
 				for el := LRU.Front(); el != nil; el = el.Next() {
 					model := (el.Value).(string)
 					modelInfo, ok := b.ModelInfo[model]
@@ -55,18 +58,20 @@ func (b *BatchDaemon) Start() {
 					}
 					if modelInfo.count >= modelInfo.threshold && modelInfo.count != 0 {
 						modelInfo.threshold = modelInfo.threshold + modelInfo.count
-						//fmt.Println("Threshold increased", modelInfo.threshold)
 						modelInfo.count = modelInfo.count - MAX_BATCH_AMT
 						if modelInfo.count < 0 {
 							modelInfo.count = 0
 						}
+						haveJobs.PushBack(model)
 						WorkQueue.batchedJobs <- model
 
 					} else {
 						modelInfo.threshold = modelInfo.threshold / 2
-						//fmt.Println("Threshold decreased", modelInfo.threshold)
+						noJobs.PushBack(model)
 					}
 				}
+				noJobs.PushBackList(haveJobs)
+				LRU = noJobs
 			}
 		}
 	}()

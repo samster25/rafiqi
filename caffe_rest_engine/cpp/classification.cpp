@@ -499,33 +499,39 @@ c_model model_init(char* model_file, char* trained_file,
     }
 }
 
+//void move_to_cpu(c_model model) {
+//    classifier_ctx *ctx = (classifier_ctx *) model;
+//    {
+//        for (int i = 0; i < ctx->k; i++) {
+//            ScopedContext<CaffeContext> context(ctx->pool);
+//            auto classifier = context->CaffeClassifier();
+//            classifier->move_to_cpu(); 
+//        }
+//    }
+//}
 void move_to_cpu(c_model model) {
     classifier_ctx *ctx = (classifier_ctx *) model;
-    {
-        for (int i = 0; i < ctx->k; i++) {
-            ScopedContext<CaffeContext> context(ctx->pool);
-            auto classifier = context->CaffeClassifier();
-            classifier->move_to_cpu(); 
-        }
+    for (int i = 0; i < ctx->k; i++) {
+        ctx->classifiers[i]->move_to_cpu();
     }
 }
 
-//void move_to_gpu(c_model model) {
-//    classifier_ctx *ctx = (classifier_ctx *) model;
-//    for (int i = 0; i < ctx->k; i++) {
-//        ctx->classifiers[i]->move_to_gpu();
-//    }
-//}
 void move_to_gpu(c_model model) {
     classifier_ctx *ctx = (classifier_ctx *) model;
-    {
-        for (int i = 0; i < ctx->k; i++) {
-            ScopedContext<CaffeContext> context(ctx->pool);
-            auto classifier = context->CaffeClassifier();
-            classifier->move_to_gpu(); 
-        }
+    for (int i = 0; i < ctx->k; i++) {
+        ctx->classifiers[i]->move_to_gpu();
     }
 }
+//void move_to_gpu(c_model model) {
+//    classifier_ctx *ctx = (classifier_ctx *) model;
+//    {
+//        for (int i = 0; i < ctx->k; i++) {
+//            ScopedContext<CaffeContext> context(ctx->pool);
+//            auto classifier = context->CaffeClassifier();
+//            classifier->move_to_gpu(); 
+//        }
+//    }
+//}
 
 
 const char** model_classify_batch(c_model model,

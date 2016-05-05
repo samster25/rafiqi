@@ -147,7 +147,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 				writeError(w, err)
 				return
 			}
-			MemoryManager.LoadModel(model)
+			//MemoryManager.LoadModel(model)
 		}
 
 		resp := RegisterResponse{

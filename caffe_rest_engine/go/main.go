@@ -20,14 +20,13 @@ import (
 )
 
 var (
-	debugMode       bool
-	debugLog        string
-	errorLog        string
-	noPreloadModels bool
-	maxGPUMemUsage  uint64
-	QUANTA          int64
-	MAX_BATCH_AMT   int
-	NUM_CONTEXTS    int
+	debugMode      bool
+	debugLog       string
+	errorLog       string
+	maxGPUMemUsage uint64
+	QUANTA         int64
+	MAX_BATCH_AMT  int
+	NUM_CONTEXTS   int
 
 	initialMemoryUsage uint64
 
@@ -74,6 +73,7 @@ func preload() {
 				initialMemoryUsage = MemoryManager.GetCurrentMemUsage() - beforeUsage
 				model.ModelSize = modelUsage - initialMemoryUsage
 				MemoryManager.LoadModel(model)
+				i += 1
 			} else {
 				model.ModelSize = MemoryManager.GetCurrentMemUsage() - beforeUsage
 			}
@@ -92,10 +92,6 @@ func preload() {
 			}
 
 			encModel.Truncate(0)
-
-			i += 1
-
-			return nil
 		}
 		return nil
 	})
@@ -160,7 +156,6 @@ func main() {
 	flag.BoolVar(&debugMode, "debug", false,
 		string("Enables debug mode, which has more")+
 			string("verbose logging and times certain operations."))
-	flag.BoolVar(&noPreloadModels, "noPreloadModels", false, "Turn off model preloading.")
 
 	flag.IntVar(&MAX_BATCH_AMT, "maxBatch", 64, "Maximum batch size")
 	flag.IntVar(&NUM_CONTEXTS, "numContexts", 2, "Number of Caffe contexts/model")
@@ -175,13 +170,9 @@ func main() {
 
 	setupLoggers()
 
-	if noPreloadModels {
-		fmt.Println("Skipping preload...")
-	} else {
-		fmt.Println("Preloading and pre-init'ing models")
-		preload()
-		fmt.Println("Finished prefetching models into CPU Ram")
-	}
+	fmt.Println("Preloading and pre-init'ing models")
+	preload()
+	fmt.Println("Finished prefetching models into CPU Ram")
 
 	fmt.Println("Starting the dispatcher!")
 	fmt.Println("nworker", *nworkers)

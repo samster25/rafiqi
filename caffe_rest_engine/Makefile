@@ -1,7 +1,7 @@
 CC=g++
 
-CAFFE = /work/rafiqi_caffe
-OPENCV = /work
+CAFFE = /scratch/sammy/concur_caffe
+OPENCV = /scratch/sammy/opencv
 INCLUDE = -I$(CAFFE)/include \
                     -I$(CAFFE)/src \
                     -I$(CAFFE) \

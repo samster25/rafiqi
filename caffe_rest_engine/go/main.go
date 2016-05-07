@@ -160,7 +160,7 @@ func ChangeParamsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	runtime.GOMAXPROCS(48)
+	runtime.GOMAXPROCS(32)
 
 	nworkers := flag.Int("n", 4, "Enter the number of workers wanted.")
 	flag.StringVar(&errorLog, "errorLog",

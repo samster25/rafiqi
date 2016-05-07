@@ -129,13 +129,21 @@ func (g *GPUMem) UpdateLRU(m *Model) {
 }
 
 func (g *GPUMem) MoveToCPU(m *Model, entry *ModelEntry) {
+	if !entry.InGPU {
+		DebugPanic("Attempted to move model not in GPU to CPU: " + m.Name)
+	}
 	start := time.Now()
 	Debugf("%v move to cpu beginning", m.Name)
+	entry.InGPU = false
 	C.move_to_cpu(entry.Classifier)
 	LogTimef("%v move to cpu", start, m.Name)
 }
 
 func (g *GPUMem) MoveToGPU(m *Model, entry *ModelEntry) {
+	if entry.InGPU {
+		DebugPanic("Attempted to move model already in GPU to GPU: " + m.Name)
+	}
+
 	Debugf("About to move %v onto the GPU", m.Name)
 	g.InitLock.Lock()
 	for !g.CanLoad(m) {

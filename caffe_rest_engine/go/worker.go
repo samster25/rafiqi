@@ -122,6 +122,5 @@ func (w Worker) Stop() {
 }
 
 func init() {
-
 	C.classifier_init()
 }

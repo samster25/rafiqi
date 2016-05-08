@@ -10,10 +10,13 @@ import (
 	"time"
 )
 
+const STATIC_USAGE = 148500480
+
 type GPUMem struct {
-	InitLock sync.Mutex
-	LRU      *list.List
-	LRULock  sync.Mutex
+	InitLock       sync.Mutex
+	LRU            *list.List
+	LRULock        sync.Mutex
+	HasLoadedModel bool
 }
 
 type LoadedModelsMap struct {
@@ -22,7 +25,7 @@ type LoadedModelsMap struct {
 }
 
 type ModelEntry struct {
-	sync.Mutex
+	sync.RWMutex
 	Classifier C.c_model
 	InGPU      bool
 }
@@ -35,7 +38,15 @@ func (g *GPUMem) GetCurrentMemUsage() uint64 {
 }
 
 func (g *GPUMem) CanLoad(m *Model) bool {
-	return g.GetCurrentMemUsage()+m.estimatedGPUMemSize() < maxGPUMemUsage
+	//Debugf("Evaluating if %v can fit", m.Name)
+	if !g.HasLoadedModel {
+		//Debugf("First time: curr: %v, estimated %v, max: %v", g.GetCurrentMemUsage(), STATIC_USAGE+m.estimatedGPUMemSize(), maxGPUMemUsage)
+		return STATIC_USAGE+m.estimatedGPUMemSize() < maxGPUMemUsage
+	} else {
+		//Debugf("Not first time: curr: %v, estimated %v, max: %v", g.GetCurrentMemUsage(), g.GetCurrentMemUsage()+m.estimatedGPUMemSize(), maxGPUMemUsage)
+		return g.GetCurrentMemUsage()+m.estimatedGPUMemSize() < maxGPUMemUsage
+
+	}
 }
 
 func (g *GPUMem) EvictLRU() {
@@ -72,12 +83,36 @@ func (g *GPUMem) EvictLRU() {
 		panic("Tried to evict model not in GPU: " + model.Name)
 	}
 
-	entry.InGPU = false
-	Debugf("Destroy beginning!")
-	start := time.Now()
-	//C.model_destroy(entry.Classifier)
+	entry.Lock()
 	g.MoveToCPU(&model, entry)
-	LogTimef("%v model destroy", start, model.Name)
+	entry.Unlock()
+}
+
+func (g *GPUMem) GetStaticGPUUsage() uint64 {
+	g.InitLock.Lock()
+	g.LRULock.Lock()
+	loadedModels.Lock()
+
+	for _, entry := range loadedModels.Models {
+		if entry.InGPU {
+			C.move_to_cpu(entry.Classifier)
+		}
+	}
+
+	initialUsage := g.GetCurrentMemUsage()
+	Debugf("initial: %v", initialUsage)
+
+	for _, entry := range loadedModels.Models {
+		if entry.InGPU {
+			C.move_to_gpu(entry.Classifier)
+		}
+	}
+
+	loadedModels.Unlock()
+	g.LRULock.Unlock()
+	g.InitLock.Unlock()
+
+	return initialUsage
 }
 
 func (g *GPUMem) InitModel(m *Model) *ModelEntry {
@@ -87,7 +122,6 @@ func (g *GPUMem) InitModel(m *Model) *ModelEntry {
 	for !g.CanLoad(m) {
 		g.EvictLRU()
 	}
-	g.InitLock.Unlock()
 	cmean := C.CString(m.MeanPath)
 	clabel := C.CString(m.LabelsPath)
 	cweights := C.CString(m.WeightsPath)
@@ -101,11 +135,14 @@ func (g *GPUMem) InitModel(m *Model) *ModelEntry {
 		handleError("init failed: ", err)
 	}
 
+	C.move_to_cpu(cclass)
 	C.move_to_gpu(cclass)
 	g.LRULock.Lock()
 	Debugf("Adding to LRU: %v", m.Name)
 	g.LRU.PushBack(*m)
 	g.LRULock.Unlock()
+	g.HasLoadedModel = true
+	g.InitLock.Unlock()
 
 	return &ModelEntry{
 		Classifier: cclass,
@@ -139,7 +176,7 @@ func (g *GPUMem) MoveToCPU(m *Model, entry *ModelEntry) {
 	LogTimef("%v move to cpu", start, m.Name)
 }
 
-func (g *GPUMem) MoveToGPU(m *Model, entry *ModelEntry) {
+func (g *GPUMem) MoveToGPU(m *Model, entry *ModelEntry, addToLRU bool) {
 	if entry.InGPU {
 		DebugPanic("Attempted to move model already in GPU to GPU: " + m.Name)
 	}
@@ -154,9 +191,11 @@ func (g *GPUMem) MoveToGPU(m *Model, entry *ModelEntry) {
 	start := time.Now()
 	entry.InGPU = true
 	C.move_to_gpu(entry.Classifier)
-	g.LRULock.Lock()
-	g.LRU.PushFront(*m)
-	g.LRULock.Unlock()
+	if addToLRU {
+		g.LRULock.Lock()
+		g.LRU.PushFront(*m)
+		g.LRULock.Unlock()
+	}
 
 	LogTimef("%v move to gpu", start, m.Name)
 }
@@ -179,7 +218,7 @@ func (g *GPUMem) LoadModel(m Model) *ModelEntry {
 		}
 		loadedModels.Unlock()
 	} else if !entry.InGPU {
-		g.MoveToGPU(&m, entry)
+		g.MoveToGPU(&m, entry, true)
 	}
 
 	g.UpdateLRU(&m)

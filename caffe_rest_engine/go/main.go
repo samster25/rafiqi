@@ -62,24 +62,25 @@ func preload() {
 			}
 			LRU.PushBack(model.Name)
 			batch_daemon.ModelInfo[model.Name] = NewModelEntry()
-			beforeUsage = MemoryManager.GetCurrentMemUsage()
 
-			entry := MemoryManager.LoadModel(model)
+			if model.ModelSize == 0 {
+				beforeUsage = MemoryManager.GetCurrentMemUsage()
 
-			if i == 0 {
-				// Find out baseline usage
-				modelUsage := MemoryManager.GetCurrentMemUsage()
-				MemoryManager.MoveToCPU(&model, entry)
-				initialMemoryUsage = MemoryManager.GetCurrentMemUsage() - beforeUsage
-				model.ModelSize = modelUsage - initialMemoryUsage
-				MemoryManager.MoveToGPU(&model, entry)
-				i += 1
+				MemoryManager.LoadModel(model)
+
+				if i == 0 {
+					// Find out baseline usage
+					modelUsage := MemoryManager.GetCurrentMemUsage()
+					model.ModelSize = modelUsage - STATIC_USAGE
+					i += 1
+				} else {
+					model.ModelSize = MemoryManager.GetCurrentMemUsage() - beforeUsage
+				}
+
+				fmt.Println("About to update", model.Name, "to have size", model.ModelSize)
 			} else {
-				model.ModelSize = MemoryManager.GetCurrentMemUsage() - beforeUsage
+				MemoryManager.LoadModel(model)
 			}
-
-			fmt.Println("About to update", model.Name, "to have size", model.ModelSize)
-
 			err = enc.Encode(model)
 			if err != nil {
 				return err

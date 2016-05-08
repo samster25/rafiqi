@@ -60,7 +60,7 @@ func (w Worker) classify(job_model string, jobs []Job) []string {
 	dec.Decode(&model)
 
 	entry := MemoryManager.LoadModel(model)
-	//entry.Lock()
+	entry.RLock()
 	start := time.Now()
 	batch_mats := make([]*C.char, len(jobs))
 	lengths := make([]C.size_t, len(jobs))
@@ -75,6 +75,7 @@ func (w Worker) classify(job_model string, jobs []Job) []string {
 		C.size_t(len(jobs)),
 	)
 	LogTimef("%v model_classify", start, jobs[0].Model)
+	entry.RUnlock()
 	//entry.Unlock()
 	//byte_convert := [][]byte(cstr_arr)
 	if err != nil {
@@ -122,6 +123,5 @@ func (w Worker) Stop() {
 }
 
 func init() {
-
 	C.classifier_init()
 }

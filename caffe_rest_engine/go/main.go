@@ -62,24 +62,25 @@ func preload() {
 			}
 			LRU.PushBack(model.Name)
 			batch_daemon.ModelInfo[model.Name] = NewModelEntry()
-			beforeUsage = MemoryManager.GetCurrentMemUsage()
 
-			MemoryManager.LoadModel(model)
+			if model.ModelSize == 0 {
+				beforeUsage = MemoryManager.GetCurrentMemUsage()
 
-			if i == 0 {
-				// Find out baseline usage
-				modelUsage := MemoryManager.GetCurrentMemUsage()
-				MemoryManager.EvictLRU()
-				initialMemoryUsage = MemoryManager.GetCurrentMemUsage() - beforeUsage
-				model.ModelSize = modelUsage - initialMemoryUsage
 				MemoryManager.LoadModel(model)
-				i += 1
+
+				if i == 0 {
+					// Find out baseline usage
+					modelUsage := MemoryManager.GetCurrentMemUsage()
+					model.ModelSize = modelUsage - STATIC_USAGE
+					i += 1
+				} else {
+					model.ModelSize = MemoryManager.GetCurrentMemUsage() - beforeUsage
+				}
+
+				fmt.Println("About to update", model.Name, "to have size", model.ModelSize)
 			} else {
-				model.ModelSize = MemoryManager.GetCurrentMemUsage() - beforeUsage
+				MemoryManager.LoadModel(model)
 			}
-
-			fmt.Println("About to update", model.Name, "to have size", model.ModelSize)
-
 			err = enc.Encode(model)
 			if err != nil {
 				return err
@@ -134,6 +135,14 @@ func Debugf(format string, v ...interface{}) {
 	}
 }
 
+func DebugPanic(format string, v ...interface{}) {
+	if debugMode {
+		panic(fmt.Sprintf(format, v...))
+	} else {
+		errorLogger.Printf(format, v...)
+	}
+}
+
 func LogTimef(operation string, start time.Time, v ...interface{}) {
 	duration := (time.Now().UnixNano() - start.UnixNano()) / 1000000
 	Debugf(fmt.Sprintf("%v took %vs (%vms)", operation, float64(duration)/1000.0, duration), v...)
@@ -180,8 +189,6 @@ func main() {
 	dis.StartDispatcher()
 	fmt.Println("Starting Background Batching Daemon")
 	batch_daemon.Start()
-
-	C.classifier_init()
 
 	fmt.Println("Registering HTTP Function")
 	http.HandleFunc("/classify", JobHandler)

@@ -68,12 +68,15 @@ func (w Worker) classify(job_model string, jobs []Job) []string {
 		batch_mats[i] = C.CString(string(jobs[i].Image))
 		lengths[i] = C.size_t(len(jobs[i].Image))
 	}
+	begin_classify := time.Now()
 	cstr_arr, err := C.model_classify_batch(
 		entry.Classifier,
 		(**C.char)(unsafe.Pointer(&batch_mats[0])),
 		(*C.size_t)(unsafe.Pointer(&lengths[0])),
 		C.size_t(len(jobs)),
 	)
+	classify_duration := (time.Now().UnixNano() - begin_classify.UnixNano()) / 1000000
+	batchDaemonMap[jobs[0].Model].quantaChan <- int(classify_duration)
 	LogTimef("%v model_classify", start, jobs[0].Model)
 	entry.RUnlock()
 	//entry.Unlock()
@@ -99,14 +102,11 @@ func (w Worker) Start() {
 			select {
 			case currModel := <-w.WorkQueue:
 				currJobs := WorkQueue.CreateBatchJob(currModel)
-				if len(currJobs) == 0 {
-					panic("There's no jobs for this model")
-				} else if currJobs == nil {
-					panic("CURJOBS NIL")
-				}
-				res := w.classify(currJobs[0].Model, currJobs)
-				for i := range res {
-					currJobs[i].Output <- res[i]
+				if currJobs != nil {
+					res := w.classify(currJobs[0].Model, currJobs)
+					for i := range res {
+						currJobs[i].Output <- res[i]
+					}
 				}
 			case <-w.Quit:
 				fmt.Println("The worker has been signalled to shut down. Ending now.")

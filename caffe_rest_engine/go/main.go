@@ -21,14 +21,14 @@ import (
 )
 
 var (
-	debugMode      bool
-	debugLog       string
-	errorLog       string
-	maxGPUMemUsage uint64
-	QUANTA         int64
-	MAX_BATCH_AMT  int
-	NUM_CONTEXTS   int
-
+	debugMode          bool
+	debugLog           string
+	errorLog           string
+	maxGPUMemUsage     uint64
+	QUANTA             int64
+	MAX_BATCH_AMT      int
+	NUM_CONTEXTS       int
+	ALPHA              float64
 	initialMemoryUsage uint64
 
 	debugLogger *log.Logger
@@ -62,7 +62,6 @@ func preload() {
 				continue
 			}
 			LRU.PushBack(model.Name)
-			batch_daemon.ModelInfo[model.Name] = NewModelEntry()
 
 			if model.ModelSize == 0 {
 				beforeUsage = MemoryManager.GetCurrentMemUsage()
@@ -150,12 +149,10 @@ func LogTimef(operation string, start time.Time, v ...interface{}) {
 	Debugf(fmt.Sprintf("%v took %vs (%vms)", operation, float64(duration)/1000.0, duration), v...)
 }
 
-var batch_daemon *BatchDaemon = NewBatchDaemon()
-
 func ChangeParamsHandler(w http.ResponseWriter, r *http.Request) {
 	quantaS := r.FormValue("quanta")
 	batchSizeS := r.FormValue("batchSize")
-
+	alphaS := r.FormValue("alpha")
 	if quantaS == "" || batchSizeS == "" {
 		w.Write([]byte("missing quanta or batch size"))
 		return
@@ -163,12 +160,15 @@ func ChangeParamsHandler(w http.ResponseWriter, r *http.Request) {
 
 	quanta, _ := strconv.ParseInt(quantaS, 10, 64)
 	batchSize, _ := strconv.Atoi(batchSizeS)
-
+	alpha, _ := strconv.ParseFloat(alphaS, 64)
 	QUANTA = quanta
 	MAX_BATCH_AMT = batchSize
+	ALPHA = alpha
 	w.Write([]byte("successfully changed"))
 
 }
+
+var batchDaemonMap map[string]*BatchDaemon = make(map[string]*BatchDaemon)
 
 func main() {
 	runtime.GOMAXPROCS(32)
@@ -188,7 +188,7 @@ func main() {
 
 	flag.IntVar(&MAX_BATCH_AMT, "maxBatch", 64, "Maximum batch size")
 	flag.IntVar(&NUM_CONTEXTS, "numContexts", 2, "Number of Caffe contexts/model")
-
+	flag.Float64Var(&ALPHA, "alpha", 0.25, "Exponential Averaging Parameter")
 	totalGPUMem := int64(C.get_total_gpu_memory())
 
 	flag.Uint64Var(&maxGPUMemUsage, "maxCacheSize", uint64(totalGPUMem), "Maximum amount of space used in GPU memory at one time (in bytes).")
@@ -207,9 +207,13 @@ func main() {
 	fmt.Println("nworker", *nworkers)
 	dis := NewDispatcher("placeholder", *nworkers)
 	dis.StartDispatcher()
-	fmt.Println("Starting Background Batching Daemon")
-	batch_daemon.Start()
-
+	fmt.Println("Starting Background Batching Daemons")
+	loadedModels.RLock()
+	for k, _ := range loadedModels.Models {
+		batchDaemonMap[k] = NewBatchDaemon(k)
+		batchDaemonMap[k].Start()
+	}
+	loadedModels.RUnlock()
 	fmt.Println("Registering HTTP Function")
 	http.HandleFunc("/classify", JobHandler)
 	http.HandleFunc("/register", RegisterHandler)

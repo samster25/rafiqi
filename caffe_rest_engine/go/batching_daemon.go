@@ -1,76 +1,76 @@
 package main
 
 import (
-	//"math"
-	"container/list"
+	"fmt"
+	"math"
 	"time"
 )
 
 type BatchDaemon struct {
-	ModelInfo        map[string]*ModelInfoEntry
+	ModelInfo        *ModelInfoEntry
 	QuantaTime       int
 	IncrementChannel chan string
+	Model            string
+	quantaChan       chan int
 }
 
 type ModelInfoEntry struct {
-	count          int
-	threshold      int
-	max_batch_size int
+	count     int
+	threshold float64
 }
 
 func NewModelEntry() *ModelInfoEntry {
 	return &ModelInfoEntry{
-		count:          0,
-		threshold:      0,
-		max_batch_size: 32,
+		count:     0,
+		threshold: 0,
 	}
 }
 
-func NewBatchDaemon() *BatchDaemon {
+func NewBatchDaemon(model string) *BatchDaemon {
 	bd := &BatchDaemon{
-		ModelInfo:        make(map[string]*ModelInfoEntry),
+		ModelInfo:        NewModelEntry(),
 		QuantaTime:       10,
 		IncrementChannel: make(chan string),
+		Model:            model,
+		quantaChan:       make(chan int),
 	}
 	return bd
 }
 
 func (b *BatchDaemon) Start() {
 
-	for el := LRU.Front(); el != nil; el = el.Next() {
-		model := (el.Value).(string)
-		b.ModelInfo[model] = NewModelEntry()
-	}
 	go func() {
+		waitChan := time.After(time.Duration(QUANTA) * time.Millisecond)
+		//time_sum := 0
+		//time_cnt := 0
 		for {
 			select {
-			case modelString := <-b.IncrementChannel:
-				b.ModelInfo[modelString].count++
-			case <-time.After(time.Duration(QUANTA) * time.Millisecond):
-				noJobs := list.New()
-				haveJobs := list.New()
-				for el := LRU.Front(); el != nil; el = el.Next() {
-					model := (el.Value).(string)
-					modelInfo, ok := b.ModelInfo[model]
-					if !ok {
-						continue
+			case <-b.IncrementChannel:
+				b.ModelInfo.count++
+			case <-b.quantaChan:
+				//time_sum = time_sum + wait
+				//time_cnt++
+				//avg := math.Ceil(float64(time_sum) / float64(time_cnt))
+				//waitChan = time.After(time.Duration(avg) * time.Millisecond)
+			case <-waitChan: //<-time.After(time.Duration(QUANTA) * time.Millisecond):
+				fmt.Println("HERERE")
+				model := b.Model
+				modelInfo := b.ModelInfo
+				if modelInfo.count >= int(math.Ceil(modelInfo.threshold)) && modelInfo.count != 0 {
+					modelInfo.threshold = (1.0-ALPHA)*float64(modelInfo.threshold) + ALPHA*float64(modelInfo.count) //modelInfo.threshold + modelInfo.count
+					modelInfo.count = modelInfo.count - MAX_BATCH_AMT
+					if modelInfo.count < 0 {
+						modelInfo.count = 0
 					}
-					if modelInfo.count >= modelInfo.threshold && modelInfo.count != 0 {
-						modelInfo.threshold = modelInfo.threshold + modelInfo.count
-						modelInfo.count = modelInfo.count - MAX_BATCH_AMT
-						if modelInfo.count < 0 {
-							modelInfo.count = 0
-						}
-						haveJobs.PushBack(model)
-						WorkQueue.batchedJobs <- model
-
-					} else {
-						modelInfo.threshold = modelInfo.threshold / 2
-						noJobs.PushBack(model)
+					WorkQueue.batchedJobs <- model
+				} else {
+					modelInfo.threshold = modelInfo.threshold / 2
+					if modelInfo.threshold < 1 {
+						modelInfo.threshold = 1
 					}
 				}
-				noJobs.PushBackList(haveJobs)
-				LRU = noJobs
+				//noJobs.PushBackList(haveJobs)
+				//LRU = noJobs
 			}
 		}
 	}()

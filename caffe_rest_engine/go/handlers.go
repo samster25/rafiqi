@@ -92,7 +92,7 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 	*/
 	job.Output = make(chan string)
 	WorkQueue.AddJob(job)
-	batch_daemon.IncrementChannel <- job.Model
+	batchDaemonMap[job.Model].IncrementChannel <- job.Model
 	select {
 	case classified := <-job.Output:
 		w.WriteHeader(200)

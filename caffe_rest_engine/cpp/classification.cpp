@@ -7,11 +7,13 @@
 #define USE_CUDNN 1
 #include <caffe/caffe.hpp>
 #include <caffe/net.hpp>
+#include <opencv2/core/cuda.hpp>
 
 #include <opencv2/cudaarithm.hpp>
 #include <opencv2/cudaimgproc.hpp>
 #include <opencv2/cudawarping.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/core/cuda_stream_accessor.hpp>
 
 #include "common.h"
 #include "gpu_allocator.h"
@@ -20,7 +22,6 @@ using namespace caffe;
 using std::string;
 using GpuMat = cv::cuda::GpuMat;
 using namespace cv;
-constexpr static int kContextsPerDevice = 2;
 constexpr static int imageBufferSize = 128 * 1024 * 1024;
 
 /* C bindings cudaMemGetInfo */
@@ -85,6 +86,7 @@ private:
     std::vector<string> labels_;
     size_t max_batch_size_;
     cudaStream_t stream_;
+    cv::cuda::Stream cvstream_;
 };
 
 Classifier::Classifier(const string& model_file,
@@ -97,7 +99,8 @@ Classifier::Classifier(const string& model_file,
 
     Caffe::set_mode(Caffe::GPU);
     allocator_ = new GPUAllocator(imageBufferSize);
-    cudaStreamCreate(&stream_); 
+    cudaStreamCreate(&stream_);
+    cvstream_ = cuda::StreamAccessor::wrapStream(stream_);
     /* Load the network. */
     net_ = std::make_shared<Net<float>>(model_file, TEST);
     net_->CopyTrainedLayersFrom(trained_file);
@@ -193,7 +196,6 @@ static std::vector<int> Argmax(const std::vector<float>& v, int N)
 
 std::vector<std::vector<Prediction> > Classifier::Classify(const std::vector<Mat>& imgs, int N)
 {
-    cudaStreamSynchronize(stream_);
     std::vector<std::vector<float> > outputs = Predict(imgs);
     std::vector<std::vector<Prediction> > all_predictions;
     N = std::min<int>(outputs[0].size(), N);
@@ -248,17 +250,26 @@ void Classifier::SetMean(const string& mean_file)
 
 std::vector<std::vector<float> > Classifier::Predict(const std::vector<Mat>& imgs)
 {
+    /* Forward dimension change to all layers. */
+    std::vector<GpuMat> float_norm_imgs;
+    for (int i = 0; i < imgs.size(); i++) {
+      Preprocess(imgs[i], &float_norm_imgs);
+    }
+    cudaStreamSynchronize(stream_);
+    
     Blob<float>* input_layer = net_->input_blobs()[0];
     input_layer->Reshape(imgs.size(), num_channels_,
                          input_geometry_.height, input_geometry_.width);
-    /* Forward dimension change to all layers. */
     net_->Reshape();
+    
     for (int i = 0; i < imgs.size(); i++) {
-     std::vector<GpuMat> input_channels;
-     WrapInputLayer(&input_channels, i);
-     Preprocess(imgs[i], &input_channels);
+      std::vector<GpuMat> input_channels;
+      WrapInputLayer(&input_channels, i);
+      cuda::split(float_norm_imgs[i], input_channels);
     }
     net_->Forward();
+
+
 
     /* Copy the output layer to a std::vector */
     Blob<float>* output_layer = net_->output_blobs()[0];
@@ -288,41 +299,37 @@ void Classifier::WrapInputLayer(std::vector<GpuMat>* input_channels, int i)
 }
 
 void Classifier::Preprocess(const Mat& host_img,
-                            std::vector<GpuMat>* input_channels)
+                            std::vector<GpuMat>* float_norm_imgs)
 {
     GpuMat img(host_img, allocator_);
     /* Convert the input image to the input image format of the network. */
     GpuMat sample(allocator_);
     if (img.channels() == 3 && num_channels_ == 1)
-        cuda::cvtColor(img, sample, CV_BGR2GRAY);
+        cuda::cvtColor(img, sample, CV_BGR2GRAY, 0, cvstream_);
     else if (img.channels() == 4 && num_channels_ == 1)
-        cuda::cvtColor(img, sample, CV_BGRA2GRAY);
+        cuda::cvtColor(img, sample, CV_BGRA2GRAY, 0, cvstream_);
     else if (img.channels() == 4 && num_channels_ == 3)
-        cuda::cvtColor(img, sample, CV_BGRA2BGR);
+        cuda::cvtColor(img, sample, CV_BGRA2BGR, 0, cvstream_);
     else if (img.channels() == 1 && num_channels_ == 3)
-        cuda::cvtColor(img, sample, CV_GRAY2BGR);
+        cuda::cvtColor(img, sample, CV_GRAY2BGR, 0, cvstream_);
     else
         sample = img;
 
     GpuMat sample_resized(allocator_);
     if (sample.size() != input_geometry_)
-        cuda::resize(sample, sample_resized, input_geometry_);
+        cuda::resize(sample, sample_resized, input_geometry_,0,0,INTER_LINEAR, cvstream_);
     else
         sample_resized = sample;
 
     GpuMat sample_float(allocator_);
     if (num_channels_ == 3)
-        sample_resized.convertTo(sample_float, CV_32FC3);
+        sample_resized.convertTo(sample_float, CV_32FC3, cvstream_);
     else
-        sample_resized.convertTo(sample_float, CV_32FC1);
+        sample_resized.convertTo(sample_float, CV_32FC1, cvstream_);
 
     GpuMat sample_normalized(allocator_);
-    cuda::subtract(sample_float, mean_, sample_normalized);
-
-    /* This operation will write the separate BGR planes directly to the
-     * input layer of the network because it is wrapped by the GpuMat
-     * objects in input_channels. */
-    cuda::split(sample_normalized, *input_channels);
+    cuda::subtract(sample_float, mean_, sample_normalized, noArray(),-1,cvstream_);
+    float_norm_imgs->push_back(sample_normalized); 
 }
 
 size_t Classifier::memory_used() {

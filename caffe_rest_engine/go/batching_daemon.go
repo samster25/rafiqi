@@ -40,20 +40,21 @@ func NewBatchDaemon(model string) *BatchDaemon {
 func (b *BatchDaemon) Start() {
 
 	go func() {
-		waitChan := time.After(time.Duration(QUANTA) * time.Millisecond)
-		//time_sum := 0
-		//time_cnt := 0
+		//waitChan := time.After(time.Duration(QUANTA) * time.Millisecond)
+		time_sum := 0
+		time_cnt := 0
+		avg := QUANTA
 		for {
 			select {
 			case <-b.IncrementChannel:
 				b.ModelInfo.count++
-			case <-b.quantaChan:
-				//time_sum = time_sum + wait
-				//time_cnt++
-				//avg := math.Ceil(float64(time_sum) / float64(time_cnt))
+			case wait := <-b.quantaChan:
+				time_sum = time_sum + wait
+				time_cnt++
+				avg = int64(math.Ceil(float64(time_sum) / float64(time_cnt)))
 				//waitChan = time.After(time.Duration(avg) * time.Millisecond)
-			case <-waitChan: //<-time.After(time.Duration(QUANTA) * time.Millisecond):
-				fmt.Println("HERERE")
+				fmt.Println(avg)
+			case <-time.After(time.Duration(avg) * time.Millisecond):
 				model := b.Model
 				modelInfo := b.ModelInfo
 				if modelInfo.count >= int(math.Ceil(modelInfo.threshold)) && modelInfo.count != 0 {

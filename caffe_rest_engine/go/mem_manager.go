@@ -10,6 +10,10 @@ import (
 	"time"
 )
 
+const (
+	MEM_LEAK_CORRECTION = 150 * 1024 * 1024
+)
+
 type GPUMem struct {
 	InitLock sync.Mutex
 	LRU      *list.List
@@ -35,22 +39,22 @@ func (g *GPUMem) GetCurrentMemUsage() uint64 {
 }
 
 func (g *GPUMem) CanLoad(m *Model) bool {
-	//Debugf("Evaluating if %v can fit", m.Name)
+	Debugf("Evaluating if %v can fit", m.Name)
 	//Debugf("First time: curr: %v, estimated %v, max: %v", g.GetCurrentMemUsage(), STATIC_USAGE+m.estimatedGPUMemSize(), maxGPUMemUsage)
-	//Debugf("Not first time: curr: %v, estimated %v, max: %v", g.GetCurrentMemUsage(), g.GetCurrentMemUsage()+m.estimatedGPUMemSize(), maxGPUMemUsage)
-	return g.GetCurrentMemUsage()+m.estimatedGPUMemSize() < maxGPUMemUsage
+	Debugf("curr: %v, estimated after load: %v, max: %v", g.GetCurrentMemUsage(), g.GetCurrentMemUsage()+m.estimatedGPUMemSize(), maxGPUMemUsage-MEM_LEAK_CORRECTION)
+	return g.GetCurrentMemUsage()+m.estimatedGPUMemSize() < maxGPUMemUsage-MEM_LEAK_CORRECTION
 }
 
 func (g *GPUMem) EvictLRU() {
 	Debugf("Eviction beginning!")
+	//time.Sleep(10 * time.Second)
 	Debugf("Currently %d entries in LRU", g.LRU.Len())
 	g.LRULock.Lock()
 	evicted := g.LRU.Back()
 
 	if evicted == nil {
-		fmt.Println("Nothing in GPU!")
-		time.Sleep(10 * time.Second)
 		panic("Exceeded mem usage, but no models loaded!")
+		return
 	}
 
 	model := (evicted.Value).(Model)
@@ -121,6 +125,7 @@ func (g *GPUMem) InitModel(m *Model) *ModelEntry {
 	start := time.Now()
 	cclass, err := C.model_init(cmodel, cweights, cmean, clabel,
 		C.size_t(NUM_CONTEXTS), C.size_t(MAX_BATCH_AMT))
+	fmt.Println("After init: ", g.GetCurrentMemUsage())
 	LogTimef("%v model_init", start, m.Name)
 
 	if err != nil {
@@ -128,7 +133,9 @@ func (g *GPUMem) InitModel(m *Model) *ModelEntry {
 	}
 
 	C.move_to_cpu(cclass)
+	fmt.Println("Mem usage after to cpu: ", g.GetCurrentMemUsage())
 	C.move_to_gpu(cclass)
+	fmt.Println("Mem usage now after to gpu: ", g.GetCurrentMemUsage())
 	g.LRULock.Lock()
 	Debugf("Adding to LRU: %v", m.Name)
 	g.LRU.PushBack(*m)
@@ -165,9 +172,11 @@ func (g *GPUMem) MoveToCPU(m *Model, entry *ModelEntry) {
 	entry.InGPU = false
 	C.move_to_cpu(entry.Classifier)
 	LogTimef("%v move to cpu", start, m.Name)
+	fmt.Println("Memory now: ", g.GetCurrentMemUsage())
 }
 
 func (g *GPUMem) MoveToGPU(m *Model, entry *ModelEntry, addToLRU bool) {
+	fmt.Println("moving to gpu: ", m.Name)
 	if entry.InGPU {
 		DebugPanic("Attempted to move model already in GPU to GPU: " + m.Name)
 	}
@@ -181,7 +190,12 @@ func (g *GPUMem) MoveToGPU(m *Model, entry *ModelEntry, addToLRU bool) {
 
 	start := time.Now()
 	entry.InGPU = true
-	C.move_to_gpu_async(entry.Classifier)
+	if useSync {
+		C.move_to_gpu(entry.Classifier)
+	} else {
+
+		C.move_to_gpu_async(entry.Classifier)
+	}
 	if addToLRU {
 		g.LRULock.Lock()
 		g.LRU.PushFront(*m)

@@ -28,6 +28,7 @@ var (
 	QUANTA         int64
 	MAX_BATCH_AMT  int
 	NUM_CONTEXTS   int
+	useSync        bool
 
 	initialMemoryUsage uint64
 
@@ -182,6 +183,8 @@ func main() {
 			string("Only meaningful if -debug is set. Defaults to stdout. "),
 	)
 
+	flag.BoolVar(&useSync, "useSync", false, "Use synchronous gpu memcopy's")
+
 	flag.BoolVar(&debugMode, "debug", false,
 		string("Enables debug mode, which has more")+
 			string("verbose logging and times certain operations."))
@@ -193,7 +196,7 @@ func main() {
 
 	flag.Uint64Var(&maxGPUMemUsage, "maxCacheSize", uint64(totalGPUMem), "Maximum amount of space used in GPU memory at one time (in bytes).")
 
-	flag.Int64Var(&QUANTA, "quanta", 10, "Watchdog quanta")
+	flag.Int64Var(&QUANTA, "quanta", 3, "Watchdog quanta")
 
 	flag.Parse()
 

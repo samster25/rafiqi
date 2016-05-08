@@ -10,13 +10,10 @@ import (
 	"time"
 )
 
-const STATIC_USAGE = 148500480
-
 type GPUMem struct {
-	InitLock       sync.Mutex
-	LRU            *list.List
-	LRULock        sync.Mutex
-	HasLoadedModel bool
+	InitLock sync.Mutex
+	LRU      *list.List
+	LRULock  sync.Mutex
 }
 
 type LoadedModelsMap struct {
@@ -39,14 +36,9 @@ func (g *GPUMem) GetCurrentMemUsage() uint64 {
 
 func (g *GPUMem) CanLoad(m *Model) bool {
 	//Debugf("Evaluating if %v can fit", m.Name)
-	if !g.HasLoadedModel {
-		//Debugf("First time: curr: %v, estimated %v, max: %v", g.GetCurrentMemUsage(), STATIC_USAGE+m.estimatedGPUMemSize(), maxGPUMemUsage)
-		return STATIC_USAGE+m.estimatedGPUMemSize() < maxGPUMemUsage
-	} else {
-		//Debugf("Not first time: curr: %v, estimated %v, max: %v", g.GetCurrentMemUsage(), g.GetCurrentMemUsage()+m.estimatedGPUMemSize(), maxGPUMemUsage)
-		return g.GetCurrentMemUsage()+m.estimatedGPUMemSize() < maxGPUMemUsage
-
-	}
+	//Debugf("First time: curr: %v, estimated %v, max: %v", g.GetCurrentMemUsage(), STATIC_USAGE+m.estimatedGPUMemSize(), maxGPUMemUsage)
+	//Debugf("Not first time: curr: %v, estimated %v, max: %v", g.GetCurrentMemUsage(), g.GetCurrentMemUsage()+m.estimatedGPUMemSize(), maxGPUMemUsage)
+	return g.GetCurrentMemUsage()+m.estimatedGPUMemSize() < maxGPUMemUsage
 }
 
 func (g *GPUMem) EvictLRU() {
@@ -141,7 +133,6 @@ func (g *GPUMem) InitModel(m *Model) *ModelEntry {
 	Debugf("Adding to LRU: %v", m.Name)
 	g.LRU.PushBack(*m)
 	g.LRULock.Unlock()
-	g.HasLoadedModel = true
 	g.InitLock.Unlock()
 
 	return &ModelEntry{
@@ -190,7 +181,7 @@ func (g *GPUMem) MoveToGPU(m *Model, entry *ModelEntry, addToLRU bool) {
 
 	start := time.Now()
 	entry.InGPU = true
-	C.move_to_gpu(entry.Classifier)
+	C.move_to_gpu_async(entry.Classifier)
 	if addToLRU {
 		g.LRULock.Lock()
 		g.LRU.PushFront(*m)

@@ -64,6 +64,7 @@ public:
     size_t memory_used();
     void move_to_cpu();
     void move_to_gpu();
+    void move_to_gpu_async();
 
 private:
     void SetMean(const string& mean_file);
@@ -74,7 +75,7 @@ private:
 
     void Preprocess(const Mat& img,
                     std::vector<GpuMat>* input_channels);
-
+    
 private:
     std::shared_ptr<Net<float>> net_;
     Size input_geometry_;
@@ -83,6 +84,7 @@ private:
     Mat host_mean_;     
     std::vector<string> labels_;
     size_t max_batch_size_;
+    cudaStream_t stream_;
 };
 
 Classifier::Classifier(const string& model_file,
@@ -95,7 +97,7 @@ Classifier::Classifier(const string& model_file,
 
     Caffe::set_mode(Caffe::GPU);
     allocator_ = new GPUAllocator(imageBufferSize);
-    
+    cudaStreamCreate(&stream_); 
     /* Load the network. */
     net_ = std::make_shared<Net<float>>(model_file, TEST);
     net_->CopyTrainedLayersFrom(trained_file);
@@ -125,7 +127,6 @@ Classifier::Classifier(const string& model_file,
     input_layer->Reshape(max_batch_size_, num_channels_,
                          input_geometry_.height, input_geometry_.width);
     net_->Reshape();
-
 }
 
 Classifier::Classifier(const string& model_file,
@@ -192,6 +193,7 @@ static std::vector<int> Argmax(const std::vector<float>& v, int N)
 
 std::vector<std::vector<Prediction> > Classifier::Classify(const std::vector<Mat>& imgs, int N)
 {
+    cudaStreamSynchronize(stream_);
     std::vector<std::vector<float> > outputs = Predict(imgs);
     std::vector<std::vector<Prediction> > all_predictions;
     N = std::min<int>(outputs[0].size(), N);
@@ -332,6 +334,13 @@ void Classifier::move_to_cpu() {
     //mean_.refcount = 0;
     //mean_.release();
     delete allocator_;
+}
+
+void Classifier::move_to_gpu_async() {
+    allocator_ = new GPUAllocator(imageBufferSize);
+    //mean_.upload(host_mean_);
+    net_->moveToGPUAsync(stream_);
+
 }
 
 void Classifier::move_to_gpu() {
@@ -520,6 +529,16 @@ void move_to_cpu(c_model model) {
 //    }
 //}
 
+void move_to_gpu_async(c_model model) {
+    classifier_ctx *ctx = (classifier_ctx *) model;
+    {
+        for (int i = 0; i < ctx->k; i++) {
+            ScopedContext<CaffeContext> context(ctx->pool);
+            auto classifier = context->CaffeClassifier();
+            classifier->move_to_gpu_async(); 
+        }
+    }
+}
 void move_to_gpu(c_model model) {
     classifier_ctx *ctx = (classifier_ctx *) model;
     {

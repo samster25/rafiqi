@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"strconv"
 	"time"
 )
 
@@ -71,7 +72,8 @@ func preload() {
 				if i == 0 {
 					// Find out baseline usage
 					modelUsage := MemoryManager.GetCurrentMemUsage()
-					model.ModelSize = modelUsage - STATIC_USAGE
+					initialMemoryUsage = MemoryManager.GetStaticGPUUsage()
+					model.ModelSize = modelUsage - initialMemoryUsage
 					i += 1
 				} else {
 					model.ModelSize = MemoryManager.GetCurrentMemUsage() - beforeUsage
@@ -150,8 +152,26 @@ func LogTimef(operation string, start time.Time, v ...interface{}) {
 
 var batch_daemon *BatchDaemon = NewBatchDaemon()
 
+func ChangeParamsHandler(w http.ResponseWriter, r *http.Request) {
+	quantaS := r.FormValue("quanta")
+	batchSizeS := r.FormValue("batchSize")
+
+	if quantaS == "" || batchSizeS == "" {
+		w.Write([]byte("missing quanta or batch size"))
+		return
+	}
+
+	quanta, _ := strconv.ParseInt(quantaS, 10, 64)
+	batchSize, _ := strconv.Atoi(batchSizeS)
+
+	QUANTA = quanta
+	MAX_BATCH_AMT = batchSize
+	w.Write([]byte("successfully changed"))
+
+}
+
 func main() {
-	runtime.GOMAXPROCS(48)
+	runtime.GOMAXPROCS(32)
 
 	nworkers := flag.Int("n", 4, "Enter the number of workers wanted.")
 	flag.StringVar(&errorLog, "errorLog",
@@ -194,6 +214,7 @@ func main() {
 	http.HandleFunc("/classify", JobHandler)
 	http.HandleFunc("/register", RegisterHandler)
 	http.HandleFunc("/list", ListHandler)
+	http.HandleFunc("/change_params", ChangeParamsHandler)
 	fmt.Println("HTTP Server listening on 127.0.0.1:8000")
 	errhttp := http.ListenAndServe("0.0.0.0:8000", nil)
 	if errhttp != nil {

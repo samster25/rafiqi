@@ -1,7 +1,7 @@
 package main
 
 const (
-	MAX_BATCH_AMT          = 128
+	MAX_BATCH_AMT          = 16
 	QUANTA                 = 5
 	DEFAULT_GPU_CACHE_SIZE = 3 * 1024 * 1024 * 1024
 	K_CONTEXTS             = 2

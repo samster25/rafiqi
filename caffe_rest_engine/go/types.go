@@ -78,7 +78,6 @@ func (h *HashyLinkedList) CreateBatchJob(model string) []Job {
 	jobListLen := jobList.Len()
 
 	if jobListLen == 0 {
-		fmt.Println("NO JOBS FOR MODEL", model)
 		return nil
 	}
 

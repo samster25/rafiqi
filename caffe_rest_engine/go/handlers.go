@@ -91,7 +91,6 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 	*/
 	job.Output = make(chan string)
 	WorkQueue.AddJob(job)
-	fmt.Println("finished addjob")
 	batch_daemon.IncrementChannel <- job.Model
 	select {
 	case classified := <-job.Output:

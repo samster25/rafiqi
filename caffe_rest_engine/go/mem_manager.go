@@ -14,11 +14,9 @@ const (
 )
 
 type GPUMem struct {
-	InitLock         sync.Mutex
-	LRU              *list.List
-	LRULock          sync.Mutex
-	ModelCountLock   sync.Mutex
-	CachedModelCount int
+	InitLock sync.Mutex
+	LRU      *list.List
+	LRULock  sync.Mutex
 }
 
 type LoadedModelsMap struct {
@@ -40,7 +38,7 @@ func (g *GPUMem) GetCurrentMemUsage() uint64 {
 }
 
 func (g *GPUMem) CanLoad(m *Model) bool {
-	if maxCachedModels > 0 && g.CachedModelCount == maxCachedModels {
+	if maxCachedModels > 0 && g.LRU.Len() == maxCachedModels {
 		Debugf("Can't fit a new model due to model count limit")
 		return false
 	}
@@ -143,7 +141,6 @@ func (g *GPUMem) InitModel(m *Model) *ModelEntry {
 	g.LRU.PushBack(*m)
 	g.LRULock.Unlock()
 
-	g.CachedModelCount += 1
 	g.InitLock.Unlock()
 
 	return &ModelEntry{
@@ -171,11 +168,8 @@ func (g *GPUMem) MoveToCPU(m *Model, entry *ModelEntry) {
 	if !entry.InGPU {
 		DebugPanic("Attempted to move model not in GPU to CPU: " + m.Name)
 	}
-	//g.ModelCountLock.Lock()
-	//defer g.ModelCountLock.Unlock()
 	start := time.Now()
 	Debugf("%v move to cpu beginning", m.Name)
-	g.CachedModelCount -= 1
 	entry.InGPU = false
 	C.move_to_cpu(entry.Classifier)
 	LogTimef("%v move to cpu", start, m.Name)
@@ -187,13 +181,10 @@ func (g *GPUMem) MoveToGPU(m *Model, entry *ModelEntry, addToLRU bool) {
 	}
 
 	Debugf("About to move %v onto the GPU", m.Name)
-	g.ModelCountLock.Lock()
 	g.InitLock.Lock()
 	for !g.CanLoad(m) {
 		g.EvictLRU()
 	}
-
-	g.CachedModelCount += 1
 
 	g.InitLock.Unlock()
 
@@ -212,7 +203,6 @@ func (g *GPUMem) MoveToGPU(m *Model, entry *ModelEntry, addToLRU bool) {
 	}
 
 	LogTimef("%v move to gpu", start, m.Name)
-	g.ModelCountLock.Unlock()
 }
 
 func (g *GPUMem) LoadModel(m Model) *ModelEntry {
@@ -228,9 +218,7 @@ func (g *GPUMem) LoadModel(m Model) *ModelEntry {
 		// Ensure no one added this model between the RUnlock and here
 		_, ok = loadedModels.Models[m.Name]
 		if !ok {
-			g.ModelCountLock.Lock()
 			entry = g.InitModel(&m)
-			g.ModelCountLock.Unlock()
 			loadedModels.Models[m.Name] = entry
 		}
 		loadedModels.Unlock()

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/boltdb/bolt"
 	"io/ioutil"
@@ -79,6 +80,11 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
+	if len(image) == 0 {
+		writeError(w, errors.New("Missing image"))
+		return
+	}
+
 	job := Job{
 		Model: r.FormValue("model_name"),
 		Image: image,
@@ -99,6 +105,10 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-type", "application/json")
 		w.Write([]byte(classified))
 		LogTimef("Request returning success", start)
+		return
+	case <-time.After(10 * time.Second):
+		writeError(w, errors.New("Request timeout."))
+		errorLogger.Println("Request timed out: ", job.Model)
 		return
 	}
 

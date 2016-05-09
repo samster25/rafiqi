@@ -45,7 +45,12 @@ func (b *BatchDaemon) Start() {
 		for {
 			select {
 			case modelString := <-b.IncrementChannel:
-				b.ModelInfo[modelString].count++
+				info, ok := b.ModelInfo[modelString]
+				if ok {
+					info.count++
+				} else {
+					errorLogger.Println("Missing model: ", modelString)
+				}
 			case <-time.After(time.Duration(QUANTA) * time.Millisecond):
 				noJobs := list.New()
 				haveJobs := list.New()

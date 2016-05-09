@@ -21,14 +21,15 @@ import (
 )
 
 var (
-	debugMode      bool
-	debugLog       string
-	errorLog       string
-	maxGPUMemUsage uint64
-	QUANTA         int64
-	MAX_BATCH_AMT  int
-	NUM_CONTEXTS   int
-	useSync        bool
+	debugMode       bool
+	debugLog        string
+	errorLog        string
+	maxGPUMemUsage  uint64
+	QUANTA          int64
+	MAX_BATCH_AMT   int
+	NUM_CONTEXTS    int
+	useSync         bool
+	maxCachedModels int
 
 	initialMemoryUsage uint64
 
@@ -191,6 +192,7 @@ func main() {
 
 	flag.IntVar(&MAX_BATCH_AMT, "maxBatch", 64, "Maximum batch size")
 	flag.IntVar(&NUM_CONTEXTS, "numContexts", 2, "Number of Caffe contexts/model")
+	flag.IntVar(&maxCachedModels, "maxCachedModels", -1, "Max number of cached models. Use -1 to disable model counting.")
 
 	totalGPUMem := int64(C.get_total_gpu_memory())
 

@@ -5,7 +5,6 @@ package main
 import "C"
 import (
 	"container/list"
-	"fmt"
 	"sync"
 	"time"
 )
@@ -15,9 +14,11 @@ const (
 )
 
 type GPUMem struct {
-	InitLock sync.Mutex
-	LRU      *list.List
-	LRULock  sync.Mutex
+	InitLock         sync.Mutex
+	LRU              *list.List
+	LRULock          sync.Mutex
+	ModelCountLock   sync.Mutex
+	CachedModelCount int
 }
 
 type LoadedModelsMap struct {
@@ -39,6 +40,10 @@ func (g *GPUMem) GetCurrentMemUsage() uint64 {
 }
 
 func (g *GPUMem) CanLoad(m *Model) bool {
+	if maxCachedModels > 0 && g.CachedModelCount == maxCachedModels {
+		Debugf("Can't fit a new model due to model count limit")
+		return false
+	}
 	Debugf("Evaluating if %v can fit", m.Name)
 	//Debugf("First time: curr: %v, estimated %v, max: %v", g.GetCurrentMemUsage(), STATIC_USAGE+m.estimatedGPUMemSize(), maxGPUMemUsage)
 	Debugf("curr: %v, estimated after load: %v, max: %v", g.GetCurrentMemUsage(), g.GetCurrentMemUsage()+m.estimatedGPUMemSize(), maxGPUMemUsage-MEM_LEAK_CORRECTION)
@@ -125,7 +130,6 @@ func (g *GPUMem) InitModel(m *Model) *ModelEntry {
 	start := time.Now()
 	cclass, err := C.model_init(cmodel, cweights, cmean, clabel,
 		C.size_t(NUM_CONTEXTS), C.size_t(MAX_BATCH_AMT))
-	fmt.Println("After init: ", g.GetCurrentMemUsage())
 	LogTimef("%v model_init", start, m.Name)
 
 	if err != nil {
@@ -133,13 +137,13 @@ func (g *GPUMem) InitModel(m *Model) *ModelEntry {
 	}
 
 	C.move_to_cpu(cclass)
-	fmt.Println("Mem usage after to cpu: ", g.GetCurrentMemUsage())
 	C.move_to_gpu(cclass)
-	fmt.Println("Mem usage now after to gpu: ", g.GetCurrentMemUsage())
 	g.LRULock.Lock()
 	Debugf("Adding to LRU: %v", m.Name)
 	g.LRU.PushBack(*m)
 	g.LRULock.Unlock()
+
+	g.CachedModelCount += 1
 	g.InitLock.Unlock()
 
 	return &ModelEntry{
@@ -167,25 +171,30 @@ func (g *GPUMem) MoveToCPU(m *Model, entry *ModelEntry) {
 	if !entry.InGPU {
 		DebugPanic("Attempted to move model not in GPU to CPU: " + m.Name)
 	}
+	//g.ModelCountLock.Lock()
+	//defer g.ModelCountLock.Unlock()
 	start := time.Now()
 	Debugf("%v move to cpu beginning", m.Name)
+	g.CachedModelCount -= 1
 	entry.InGPU = false
 	C.move_to_cpu(entry.Classifier)
 	LogTimef("%v move to cpu", start, m.Name)
-	fmt.Println("Memory now: ", g.GetCurrentMemUsage())
 }
 
 func (g *GPUMem) MoveToGPU(m *Model, entry *ModelEntry, addToLRU bool) {
-	fmt.Println("moving to gpu: ", m.Name)
 	if entry.InGPU {
 		DebugPanic("Attempted to move model already in GPU to GPU: " + m.Name)
 	}
 
 	Debugf("About to move %v onto the GPU", m.Name)
+	g.ModelCountLock.Lock()
 	g.InitLock.Lock()
 	for !g.CanLoad(m) {
 		g.EvictLRU()
 	}
+
+	g.CachedModelCount += 1
+
 	g.InitLock.Unlock()
 
 	start := time.Now()
@@ -203,6 +212,7 @@ func (g *GPUMem) MoveToGPU(m *Model, entry *ModelEntry, addToLRU bool) {
 	}
 
 	LogTimef("%v move to gpu", start, m.Name)
+	g.ModelCountLock.Unlock()
 }
 
 func (g *GPUMem) LoadModel(m Model) *ModelEntry {
@@ -218,7 +228,9 @@ func (g *GPUMem) LoadModel(m Model) *ModelEntry {
 		// Ensure no one added this model between the RUnlock and here
 		_, ok = loadedModels.Models[m.Name]
 		if !ok {
+			g.ModelCountLock.Lock()
 			entry = g.InitModel(&m)
+			g.ModelCountLock.Unlock()
 			loadedModels.Models[m.Name] = entry
 		}
 		loadedModels.Unlock()

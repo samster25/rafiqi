@@ -33,19 +33,20 @@ type ModelEntry struct {
 var loadedModels LoadedModelsMap
 var MemoryManager *GPUMem
 
-func (g *GPUMem) GetCurrentMemUsage() uint64 {
-	return uint64(C.get_total_gpu_memory()) - uint64(C.get_free_gpu_memory())
-}
+//func (g *GPUMem) GetCurrentMemUsage() uint64 {
+//	return uint64(C.get_total_gpu_memory()) - uint64(C.get_free_gpu_memory())
+//}
 
 func (g *GPUMem) CanLoad(m *Model) bool {
 	if maxCachedModels > 0 && g.LRU.Len() == maxCachedModels {
 		Debugf("Can't fit a new model due to model count limit")
 		return false
 	}
-	Debugf("Evaluating if %v can fit", m.Name)
+	return true
+	//Debugf("Evaluating if %v can fit", m.Name)
 	//Debugf("First time: curr: %v, estimated %v, max: %v", g.GetCurrentMemUsage(), STATIC_USAGE+m.estimatedGPUMemSize(), maxGPUMemUsage)
-	Debugf("curr: %v, estimated after load: %v, max: %v", g.GetCurrentMemUsage(), g.GetCurrentMemUsage()+m.estimatedGPUMemSize(), maxGPUMemUsage-MEM_LEAK_CORRECTION)
-	return g.GetCurrentMemUsage()+m.estimatedGPUMemSize() < maxGPUMemUsage-MEM_LEAK_CORRECTION
+	//Debugf("curr: %v, estimated after load: %v, max: %v", g.GetCurrentMemUsage(), g.GetCurrentMemUsage()+m.estimatedGPUMemSize(), maxGPUMemUsage-MEM_LEAK_CORRECTION)
+	//return g.GetCurrentMemUsage()+m.ModelSize < maxGPUMemUsage-MEM_LEAK_CORRECTION
 }
 
 func (g *GPUMem) EvictLRU() {
@@ -87,6 +88,7 @@ func (g *GPUMem) EvictLRU() {
 	entry.Unlock()
 }
 
+/*
 func (g *GPUMem) GetStaticGPUUsage() uint64 {
 	g.InitLock.Lock()
 	g.LRULock.Lock()
@@ -113,10 +115,10 @@ func (g *GPUMem) GetStaticGPUUsage() uint64 {
 
 	return initialUsage
 }
-
+*/
 func (g *GPUMem) InitModel(m *Model) *ModelEntry {
 	Debugf("Initializing model: %v", m.Name)
-	Debugf("Current mem usage: %d mebibytes", g.GetCurrentMemUsage()/(1024*1024))
+	//Debugf("Current mem usage: %d mebibytes", g.GetCurrentMemUsage()/(1024*1024))
 	g.InitLock.Lock()
 	for !g.CanLoad(m) {
 		g.EvictLRU()

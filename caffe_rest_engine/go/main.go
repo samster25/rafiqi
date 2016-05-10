@@ -40,57 +40,59 @@ var (
 )
 
 func preloadModel(model Model) error {
-	var isFirstLoad bool
-	if LRU.Len() == 0 {
-		isFirstLoad = true
-	} else {
-		isFirstLoad = false
-	}
-
+	/*	var isFirstLoad bool
+		if LRU.Len() == 0 {
+			isFirstLoad = true
+		} else {
+			isFirstLoad = false
+		}
+	*/
 	LRU.PushBack(model.Name)
 	batch_daemon.ModelInfo[model.Name] = NewModelEntry()
 
-	var beforeUsage uint64
+	//var beforeUsage uint64
+	/*
+		if model.ModelSize == 0 {
+			//beforeUsage = MemoryManager.GetCurrentMemUsage()
 
-	if model.ModelSize == 0 {
-		beforeUsage = MemoryManager.GetCurrentMemUsage()
+			MemoryManager.LoadModel(model)
 
-		MemoryManager.LoadModel(model)
+			if isFirstLoad {
+				// Find out baseline usage
+				modelUsage := MemoryManager.GetCurrentMemUsage()
+				initialMemoryUsage = MemoryManager.GetStaticGPUUsage()
+				model.ModelSize = modelUsage - initialMemoryUsage
+			} else {
+				model.ModelSize = MemoryManager.GetCurrentMemUsage() - beforeUsage
+			}
 
-		if isFirstLoad {
-			// Find out baseline usage
-			modelUsage := MemoryManager.GetCurrentMemUsage()
-			initialMemoryUsage = MemoryManager.GetStaticGPUUsage()
-			model.ModelSize = modelUsage - initialMemoryUsage
-		} else {
-			model.ModelSize = MemoryManager.GetCurrentMemUsage() - beforeUsage
-		}
+			fmt.Println("About to update", model.Name, "to have size", model.ModelSize)
+		} else {*/
+	MemoryManager.LoadModel(model)
+	//}
 
-		fmt.Println("About to update", model.Name, "to have size", model.ModelSize)
-	} else {
-		MemoryManager.LoadModel(model)
-	}
+	/*
 
-	var encModel bytes.Buffer
+		var encModel bytes.Buffer
 
-	enc := gob.NewEncoder(&encModel)
-	err := enc.Encode(model)
-	if err != nil {
-		return err
-	}
-
-	err = db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket(MODELS_BUCKET)
-		err = b.Put([]byte(model.Name), encModel.Bytes())
+		enc := gob.NewEncoder(&encModel)
+		err := enc.Encode(model)
 		if err != nil {
 			return err
 		}
-		return nil
-	})
 
-	if err != nil {
-		return err
-	}
+		err = db.Update(func(tx *bolt.Tx) error {
+			b := tx.Bucket(MODELS_BUCKET)
+			err = b.Put([]byte(model.Name), encModel.Bytes())
+			if err != nil {
+				return err
+			}
+			return nil
+		})
+
+		if err != nil {
+			return err
+		}*/
 
 	return nil
 }

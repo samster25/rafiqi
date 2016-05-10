@@ -44,8 +44,8 @@ func (g *GPUMem) CanLoad(m *Model) bool {
 	}
 	Debugf("Evaluating if %v can fit", m.Name)
 	//Debugf("First time: curr: %v, estimated %v, max: %v", g.GetCurrentMemUsage(), STATIC_USAGE+m.estimatedGPUMemSize(), maxGPUMemUsage)
-	Debugf("curr: %v, estimated after load: %v, max: %v", g.GetCurrentMemUsage(), g.GetCurrentMemUsage()+m.estimatedGPUMemSize(), maxGPUMemUsage-MEM_LEAK_CORRECTION)
-	return g.GetCurrentMemUsage()+m.estimatedGPUMemSize() < maxGPUMemUsage-MEM_LEAK_CORRECTION
+	//Debugf("curr: %v, estimated after load: %v, max: %v", g.GetCurrentMemUsage(), g.GetCurrentMemUsage()+m.estimatedGPUMemSize(), maxGPUMemUsage-MEM_LEAK_CORRECTION)
+	return g.GetCurrentMemUsage()+m.ModelSize < maxGPUMemUsage-MEM_LEAK_CORRECTION
 }
 
 func (g *GPUMem) EvictLRU() {

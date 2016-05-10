@@ -22,10 +22,6 @@ type Model struct {
 	ModelSize   uint64
 }
 
-func (m *Model) estimatedGPUMemSize() uint64 {
-	return uint64(NUM_CONTEXTS) * (m.ModelSize + FRAME_BUF_SIZE)
-}
-
 //type ModelBatchEntry struct {
 //	JobEntries   *list.List
 //	LRUEntry     *list.Element

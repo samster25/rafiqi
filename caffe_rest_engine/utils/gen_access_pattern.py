@@ -4,20 +4,28 @@ import numpy as np
 import random
 import sys
 
-def sweeping_dist(models, total_requests, full_url):
-    for i in range(total_requests):
-        print full_url  + models[i % len(models)]
+ZIPF_ALPHA = 1.1
 
-def random_dist(models, total_requests, full_url):
-    for _ in range(total_requests):
-        print full_url + random.choice(models)
+def sweeping_dist(models):
+    i = 0
+    while True:
+        yield models[i % len(models)]
+        i += 1
 
-def zipf_dist(models, total_requests, full_url):
-    for _ in range(total_requests):
-        choice = np.random.zipf(1.01)
+def random_dist(models):
+    while True:
+        yield random.choice(models)
+
+def zipf_dist(models):
+    while True:
+        choice = np.random.zipf(ZIPF_ALPHA)
         while choice > len(models):
-            choice = np.random.zipf(1.01)
-        print full_url + models[choice - 1]
+            choice = np.random.zipf(ZIPF_ALPHA)
+        yield models[choice - 1]
+
+
+
+
 
 DISTRIBUTIONS = {
         'sweeping': sweeping_dist,
@@ -34,14 +42,27 @@ def main():
     parser.add_argument("-total", type=int, required=True)
     parser.add_argument("-serverHost", default="localhost:8000")
     parser.add_argument("-iterations", default=1, type=int)
+    parser.add_argument("-out", required=True)
 
     args = parser.parse_args()
 
     dist_func = DISTRIBUTIONS[args.pattern]
 
     full_url = "http://%s/classify?model_name=" % args.serverHost
-    for _ in range(args.iterations):
-        dist_func(args.model, args.total, full_url)
 
+    choices = []
+    values = set()
+    dist_iter = iter(dist_func(args.model))
+    for _ in range(args.total):
+        value = next(dist_iter)
+        choices.append(value)
+        values.add(value)
+
+    with open(args.out, 'w') as f:
+        f.write('\n'.join((full_url + m for m in choices)))
+
+    total = float(len(choices))
+    for value in values:
+        print "Percent for:", value, "=", round(float(choices.count(value)) / total*100),"%"
 if __name__ == "__main__":
     main()

@@ -42,9 +42,13 @@ def main():
     parser.add_argument("-total", type=int, required=True)
     parser.add_argument("-serverHost", default="localhost:8000")
     parser.add_argument("-iterations", default=1, type=int)
+    parser.add_argument("-zipf_alpha", type=int, default=1.1)
     parser.add_argument("-out", required=True)
 
     args = parser.parse_args()
+
+    global ZIPF_ALPHA
+    ZIPF_ALPHA = args.zipf_alpha
 
     dist_func = DISTRIBUTIONS[args.pattern]
 

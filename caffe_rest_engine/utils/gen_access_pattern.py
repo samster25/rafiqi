@@ -4,7 +4,7 @@ import numpy as np
 import random
 import sys
 
-ZIPF_ALPHA = 1.1
+ZIPF_ALPHA = 1.5
 
 def sweeping_dist(models):
     i = 0
@@ -62,7 +62,7 @@ def main():
         f.write('\n'.join((full_url + m for m in choices)))
 
     total = float(len(choices))
-    for value in values:
+    for value in sorted(values):
         print "Percent for:", value, "=", round(float(choices.count(value)) / total*100),"%"
 if __name__ == "__main__":
     main()

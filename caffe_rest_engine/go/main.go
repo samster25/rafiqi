@@ -39,21 +39,73 @@ var (
 	logFlags = log.Lshortfile | log.Ltime | log.Lmicroseconds
 )
 
-func preload() {
-	var modelGob []byte
+func preloadModel(model Model) error {
+	var isFirstLoad bool
+	if LRU.Len() == 0 {
+		isFirstLoad = true
+	} else {
+		isFirstLoad = false
+	}
+
+	LRU.PushBack(model.Name)
+	batch_daemon.ModelInfo[model.Name] = NewModelEntry()
 
 	var beforeUsage uint64
 
-	err := db.Update(func(tx *bolt.Tx) error {
+	if model.ModelSize == 0 {
+		beforeUsage = MemoryManager.GetCurrentMemUsage()
+
+		MemoryManager.LoadModel(model)
+
+		if isFirstLoad {
+			// Find out baseline usage
+			modelUsage := MemoryManager.GetCurrentMemUsage()
+			initialMemoryUsage = MemoryManager.GetStaticGPUUsage()
+			model.ModelSize = modelUsage - initialMemoryUsage
+		} else {
+			model.ModelSize = MemoryManager.GetCurrentMemUsage() - beforeUsage
+		}
+
+		fmt.Println("About to update", model.Name, "to have size", model.ModelSize)
+	} else {
+		MemoryManager.LoadModel(model)
+	}
+
+	var encModel bytes.Buffer
+
+	enc := gob.NewEncoder(&encModel)
+	err := enc.Encode(model)
+	if err != nil {
+		return err
+	}
+
+	err = db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(MODELS_BUCKET)
+		err = b.Put([]byte(model.Name), encModel.Bytes())
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func preload() {
+	var modelGob []byte
+
+	models := make([]Model, 0)
+
+	err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(MODELS_BUCKET)
 		c := b.Cursor()
 
-		i := 0
-
 		for k, v := c.First(); k != nil; k, v = c.Next() {
 			var model Model
-			var encModel bytes.Buffer
-			enc := gob.NewEncoder(&encModel)
 
 			modelGob = make([]byte, len(v))
 			copy(modelGob, v)
@@ -63,46 +115,20 @@ func preload() {
 			if err != nil {
 				continue
 			}
-			LRU.PushBack(model.Name)
-			batch_daemon.ModelInfo[model.Name] = NewModelEntry()
-
-			if model.ModelSize == 0 {
-				beforeUsage = MemoryManager.GetCurrentMemUsage()
-
-				MemoryManager.LoadModel(model)
-
-				if i == 0 {
-					// Find out baseline usage
-					modelUsage := MemoryManager.GetCurrentMemUsage()
-					initialMemoryUsage = MemoryManager.GetStaticGPUUsage()
-					model.ModelSize = modelUsage - initialMemoryUsage
-					i += 1
-				} else {
-					model.ModelSize = MemoryManager.GetCurrentMemUsage() - beforeUsage
-				}
-
-				fmt.Println("About to update", model.Name, "to have size", model.ModelSize)
-			} else {
-				MemoryManager.LoadModel(model)
-			}
-			err = enc.Encode(model)
-			if err != nil {
-				return err
-			}
-
-			b := tx.Bucket(MODELS_BUCKET)
-			err = b.Put([]byte(model.Name), encModel.Bytes())
-			if err != nil {
-				return err
-			}
-
-			encModel.Truncate(0)
+			models = append(models, model)
 		}
 		return nil
 	})
 
 	if err != nil {
-		panic("error in transaction! " + err.Error())
+		panic("error acquiring list of models to preload! " + err.Error())
+	}
+
+	for _, model := range models {
+		err = preloadModel(model)
+		if err != nil {
+			panic("error preloading " + model.Name + ": " + err.Error())
+		}
 	}
 
 }

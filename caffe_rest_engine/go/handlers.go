@@ -157,7 +157,10 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 				writeError(w, err)
 				return
 			}
-			//MemoryManager.LoadModel(model)
+
+			fmt.Println("Registered model:", model.Name, " - beginning preload")
+			preloadModel(model)
+			fmt.Println("Preload done.")
 		}
 
 		resp := RegisterResponse{
@@ -185,8 +188,9 @@ func ListHandler(w http.ResponseWriter, r *http.Request) {
 			dec := gob.NewDecoder(buf)
 			var decModel Model
 			dec.Decode(&decModel)
-			s := fmt.Sprintf("%v|%v|%v|%v|%v", string(k), decModel.WeightsPath,
-				decModel.ModelPath, decModel.LabelsPath, decModel.MeanPath)
+			s := fmt.Sprintf("%v|%v|%v|%v|%v|%v\n", string(k), decModel.WeightsPath,
+				decModel.ModelPath, decModel.LabelsPath, decModel.MeanPath,
+				decModel.ModelSize)
 			modelKeys = append(modelKeys, s)
 		}
 		return nil

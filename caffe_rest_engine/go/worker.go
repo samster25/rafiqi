@@ -99,14 +99,11 @@ func (w Worker) Start() {
 			select {
 			case currModel := <-w.WorkQueue:
 				currJobs := WorkQueue.CreateBatchJob(currModel)
-				if len(currJobs) == 0 {
-					panic("There's no jobs for this model")
-				} else if currJobs == nil {
-					panic("CURJOBS NIL")
-				}
-				res := w.classify(currJobs[0].Model, currJobs)
-				for i := range res {
-					currJobs[i].Output <- res[i]
+				if currJobs != nil {
+					res := w.classify(currJobs[0].Model, currJobs)
+					for i := range res {
+						currJobs[i].Output <- res[i]
+					}
 				}
 			case <-w.Quit:
 				fmt.Println("The worker has been signalled to shut down. Ending now.")

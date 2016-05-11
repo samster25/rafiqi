@@ -69,6 +69,7 @@ func preloadModel(model Model) error {
 			fmt.Println("About to update", model.Name, "to have size", model.ModelSize)
 		} else {*/
 	MemoryManager.LoadModel(model)
+	return nil
 	//}
 
 	/*
@@ -94,7 +95,6 @@ func preloadModel(model Model) error {
 			return err
 		}*/
 
-	return nil
 }
 
 func preload() {
@@ -185,17 +185,25 @@ var batch_daemon *BatchDaemon = NewBatchDaemon()
 func ChangeParamsHandler(w http.ResponseWriter, r *http.Request) {
 	quantaS := r.FormValue("quanta")
 	batchSizeS := r.FormValue("batchSize")
+	maxModelsS := r.FormValue("maxCachedModels")
 
-	if quantaS == "" || batchSizeS == "" {
-		w.Write([]byte("missing quanta or batch size"))
-		return
+	if quantaS != "" {
+		quanta, _ := strconv.ParseInt(quantaS, 10, 64)
+		QUANTA = quanta
+
 	}
 
-	quanta, _ := strconv.ParseInt(quantaS, 10, 64)
-	batchSize, _ := strconv.Atoi(batchSizeS)
+	if batchSizeS != "" {
+		batchSize, _ := strconv.Atoi(batchSizeS)
+		MAX_BATCH_AMT = batchSize
 
-	QUANTA = quanta
-	MAX_BATCH_AMT = batchSize
+	}
+
+	if maxModelsS != "" {
+		maxModels, _ := strconv.Atoi(maxModelsS)
+		maxCachedModels = maxModels
+	}
+
 	w.Write([]byte("successfully changed"))
 
 }

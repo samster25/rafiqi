@@ -103,10 +103,12 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 	case classified := <-job.Output:
 		w.WriteHeader(200)
 		w.Header().Set("content-type", "application/json")
+		w.Header().Set("Connection", "close")
 		w.Write([]byte(classified))
 		LogTimef("Request returning success", start)
 		return
 	case <-time.After(10 * time.Second):
+		w.Header().Set("Connection", "close")
 		writeError(w, errors.New("Request timeout."))
 		errorLogger.Println("Request timed out: ", job.Model)
 		return

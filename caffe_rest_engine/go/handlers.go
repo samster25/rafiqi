@@ -71,6 +71,7 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	if r.Method != "POST" {
 		http.Error(w, "Invalid method - only POST requests are valid for this endpoint.", 405)
+		return
 	}
 	image, err := ioutil.ReadAll(r.Body)
 	LogTimef("reading body", start)
@@ -101,12 +102,13 @@ func JobHandler(w http.ResponseWriter, r *http.Request) {
 	batch_daemon.IncrementChannel <- job.Model
 	select {
 	case classified := <-job.Output:
-		w.WriteHeader(200)
 		w.Header().Set("content-type", "application/json")
+		w.Header().Set("Connection", "close")
 		w.Write([]byte(classified))
 		LogTimef("Request returning success", start)
 		return
 	case <-time.After(10 * time.Second):
+		w.Header().Set("Connection", "close")
 		writeError(w, errors.New("Request timeout."))
 		errorLogger.Println("Request timed out: ", job.Model)
 		return
